@@ -1,0 +1,23 @@
+# Credentials — never commit
+.env
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Local port / machine-specific overrides
+settings.ini
+
+# Arduino IDE build artefacts
+build/
+_build_test*/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,538 @@
+/*
+ * m25_ble.h - BLE client for Alber e-motion M25 wheels
+ *
+ * Declares the complete M25 SPP-over-BLE communication stack:
+ *   - AES-128-CBC encryption (IV encrypted via ECB, per m25_crypto.py)
+ *   - CRC-16 frame checksum (per m25_protocol.py)
+ *   - Byte stuffing of 0xEF markers (add_delimiters in m25_protocol.py)
+ *   - SPP packet builder (per m25_spp.py PacketBuilder)
+ *   - BLE GATT client connection to both wheels
+ *   - Response parsing with ACK/NACK handling
+ *
+ * Protocol constants match m25_protocol_data.py exactly.
+ *
+ * Connection sequence (m25_parking.py):
+ *   1. BLE GATT connect
+ *   2. WRITE_SYSTEM_MODE(0x01)  -> init communication
+ *   3. WRITE_DRIVE_MODE(0x04)   -> enable remote control bit
+ *   4. WRITE_REMOTE_SPEED(spd)  -> every 50 ms while operating
+ *   5. WRITE_REMOTE_SPEED(0) + WRITE_DRIVE_MODE(0x00) on disconnect
+ *
+ * Speed sign convention (m25_parking.py left_wheel_speed = -actual_left):
+ *   LEFT  wheel: send NEGATED speed (wheels face opposite directions)
+ *   RIGHT wheel: send AS-IS speed
+ */
+
+#ifndef M25_BLE_H
+#define M25_BLE_H
+
+#include <Arduino.h>
+#include "device_config.h"
+#if M25_TRANSPORT_BLE
+#include <BLEDevice.h>
+#include <BLEClient.h>
+#endif
+#if M25_TRANSPORT_RFCOMM
+#include <esp_bt.h>
+#include <esp_bt_device.h>
+#include <esp_bt_defs.h>
+#include <esp_bt_main.h>
+#include <esp_gap_bt_api.h>
+#include <esp_spp_api.h>
+#endif
+#include <mbedtls/aes.h>
+#include <esp_system.h>     // esp_fill_random()
+#include <stddef.h>         // offsetof()
+
+ // ---------------------------------------------------------------------------
+ // M25 SPP Service / Characteristic UUIDs (m25_bluetooth.py)
+ // ---------------------------------------------------------------------------
+#define M25_SPP_SERVICE_UUID  "00001101-0000-1000-8000-00805F9B34FB"
+
+// ---------------------------------------------------------------------------
+// Protocol constants (m25_protocol.py / m25_protocol_data.py)
+// ---------------------------------------------------------------------------
+#define M25_HEADER_MARKER     0xEF
+#define M25_HEADER_SIZE       3     // [0xEF, len_hi, len_lo]
+#define M25_CRC_SIZE          2
+
+// SPP header fixed field values
+#define M25_PROTOCOL_ID_STANDARD    0x01
+#define M25_SRC_SMARTPHONE          0x05
+#define M25_DEST_WHEEL_COMMON       0x01
+
+// Starting telegram ID (DEFAULT_TELEGRAM_ID in m25_protocol_data.py = -128 = 0x80)
+#define M25_TELEGRAM_ID_START       0x80
+
+// Service ID for all remote commands
+#define M25_SRV_APP_MGMT            0x01
+
+// Parameter IDs (APP_MGMT service, m25_protocol_data.py)
+#define M25_PARAM_WRITE_SYSTEM_MODE   0x10
+#define M25_PARAM_WRITE_DRIVE_MODE    0x20
+#define M25_PARAM_WRITE_REMOTE_SPEED  0x30
+#define M25_PARAM_WRITE_ASSIST_LEVEL  0x40
+
+// Parameter IDs - Read commands (APP_MGMT)
+#define M25_PARAM_READ_ASSIST_LEVEL   0x41
+#define M25_PARAM_READ_DRIVE_MODE     0x21
+#define M25_PARAM_READ_CRUISE_VALUES  0xD1
+
+// Parameter IDs - Status responses (APP_MGMT)
+#define M25_PARAM_STATUS_ASSIST_LEVEL 0x42
+#define M25_PARAM_STATUS_DRIVE_MODE   0x22
+#define M25_PARAM_CRUISE_VALUES       0xD2
+
+// Parameter IDs - Battery (BATT_MGMT service 0x08)
+#define M25_PARAM_READ_SOC            0x11
+#define M25_PARAM_STATUS_SOC          0x12
+
+// Parameter IDs - Version (VERSION_MGMT service 0x0A)
+#define M25_PARAM_READ_SW_VERSION     0x21
+#define M25_PARAM_STATUS_SW_VERSION   0x22
+
+// Service IDs
+#define M25_SRV_BATT_MGMT             0x08
+#define M25_SRV_VERSION_MGMT          0x0A
+
+// ACK/NACK response codes
+#define M25_PARAM_ACK                 0xFF
+#define M25_NACK_GENERAL              0x80  // General error
+#define M25_NACK_SID                  0x81  // Invalid service ID
+#define M25_NACK_PID                  0x82  // Invalid parameter ID
+#define M25_NACK_LENGTH               0x83  // Invalid length
+#define M25_NACK_CHKSUM               0x84  // Checksum error
+#define M25_NACK_COND                 0x85  // Condition not met
+#define M25_NACK_SEC_ACC              0x86  // Security/access denied
+#define M25_NACK_CMD_NOT_EXEC         0x87  // Command not executed
+#define M25_NACK_CMD_INTERNAL_ERROR   0x88  // Internal error
+
+// Drive mode bit flags (DRIVE_MODE_BIT_* in m25_protocol_data.py)
+#define M25_DRIVE_MODE_NORMAL     0x00
+#define M25_DRIVE_MODE_AUTO_HOLD  0x01   // hill hold
+#define M25_DRIVE_MODE_CRUISE     0x02
+#define M25_DRIVE_MODE_REMOTE     0x04   // remote control
+
+// System mode values
+#define M25_SYSTEM_MODE_CONNECT   0x01
+#define M25_SYSTEM_MODE_STANDBY   0x02
+
+// Assist levels sent to wheel: ASSIST_LEVEL_1=0, _2=1, _3=2 (m25_protocol_data.py)
+// Mapping: ASSIST_INDOOR -> 0, ASSIST_OUTDOOR -> 1, ASSIST_LEARNING -> 2
+static const uint8_t M25_ASSIST_LEVEL_MAP[ASSIST_COUNT] = { 0, 1, 2 };
+
+// Speed scaling: percent (-100..+100) to M25 raw signed int16 units.
+// SPEED_FAST in m25_parking.py is ~250.  100 % -> 250 raw.
+#define M25_SPEED_SCALE  2.5f
+
+// Reconnect retry interval
+#define BLE_RECONNECT_DELAY_MS    5000
+// Stop auto-reconnect after this many consecutive failures per wheel
+#define BLE_MAX_RECONNECT_FAILS   5
+// Delay between connecting wheels (dual-wheel mode, allows BLE stack to settle)
+#define BLE_INTER_WHEEL_DELAY_MS  2500
+// Post-GATT delay before sending commands
+#define BLE_POST_GATT_DELAY_MS    300
+// Cold-boot BLE stack init delay (GATT client async init after BLEDevice::init)
+#define BLE_STACK_INIT_DELAY_MS   1000
+// Retry delay for registerForNotify (descriptor retrieval stabilization)
+#define BLE_NOTIFY_RETRY_DELAY_MS 700
+// GATT service discovery can lag after link-level connect on some wheels.
+#define BLE_SERVICE_DISCOVERY_RETRIES 4
+#define BLE_SERVICE_DISCOVERY_DELAY_MS 650
+#define RFCOMM_CHANNEL 6
+#define RFCOMM_CONNECT_TIMEOUT_MS 7000
+// Stale-notify threshold: if a connected wheel sends no notify within this window
+// while DRIVING, the GATT write path is declared dead and failsafe is triggered.
+// Must be > 50 ms (motor write period) with enough headroom for ACK round-trips.
+#define BLE_NOTIFY_STALE_MS       2000
+
+// TX failure handling:
+// tolerate brief GATT write hiccups and only mark a wheel disconnected after
+// a short consecutive-failure streak within this rolling time window.
+#define BLE_TX_FAIL_DISCONNECT_STREAK  4
+#define BLE_TX_FAIL_WINDOW_MS          1000
+#define BLE_TX_FAIL_LOG_EVERY          5
+
+// ---------------------------------------------------------------------------
+// Wheel slot indices
+// ---------------------------------------------------------------------------
+#define WHEEL_LEFT  0
+#define WHEEL_RIGHT 1
+#define WHEEL_COUNT 2
+
+// ---------------------------------------------------------------------------
+// CRC-16 lookup table (m25_protocol.py CRC_TABLE, init value 0xFFFF)
+// ---------------------------------------------------------------------------
+static const uint16_t _crcTable[256] PROGMEM = {
+    0,49345,49537,320,49921,960,640,49729,50689,1728,1920,51009,1280,50625,50305,1088,
+    52225,3264,3456,52545,3840,53185,52865,3648,2560,51905,52097,2880,51457,2496,2176,51265,
+    55297,6336,6528,55617,6912,56257,55937,6720,7680,57025,57217,8000,56577,7616,7296,56385,
+    5120,54465,54657,5440,55041,6080,5760,54849,53761,4800,4992,54081,4352,53697,53377,4160,
+    61441,12480,12672,61761,13056,62401,62081,12864,13824,63169,63361,14144,62721,13760,13440,62529,
+    15360,64705,64897,15680,65281,16320,16000,65089,64001,15040,15232,64321,14592,63937,63617,14400,
+    10240,59585,59777,10560,60161,11200,10880,59969,60929,11968,12160,61249,11520,60865,60545,11328,
+    58369,9408,9600,58689,9984,59329,59009,9792,8704,58049,58241,9024,57601,8640,8320,57409,
+    40961,24768,24960,41281,25344,41921,41601,25152,26112,42689,42881,26432,42241,26048,25728,42049,
+    27648,44225,44417,27968,44801,28608,28288,44609,43521,27328,27520,43841,26880,43457,43137,26688,
+    30720,47297,47489,31040,47873,31680,31360,47681,48641,32448,32640,48961,32000,48577,48257,31808,
+    46081,29888,30080,46401,30464,47041,46721,30272,29184,45761,45953,29504,45313,29120,28800,45121,
+    20480,37057,37249,20800,37633,21440,21120,37441,38401,22208,22400,38721,21760,38337,38017,21568,
+    39937,23744,23936,40257,24320,40897,40577,24128,23040,39617,39809,23360,39169,22976,22656,38977,
+    34817,18624,18816,35137,19200,35777,35457,19008,19968,36545,36737,20288,36097,19904,19584,35905,
+    17408,33985,34177,17728,34561,18368,18048,34369,33281,17088,17280,33601,16640,33217,32897,16448
+};
+
+// ---------------------------------------------------------------------------
+// Response parsing structures (forward declarations for function signatures)
+// ---------------------------------------------------------------------------
+
+// SPP packet header (6 bytes minimum)
+struct ResponseHeader {
+    uint8_t protocolId;  // Protocol version (0x01 = standard)
+    uint8_t telegramId;  // Sequence number
+    uint8_t sourceId;    // Source device ID
+    uint8_t destId;      // Destination device ID
+    uint8_t serviceId;   // Service/subsystem ID
+    uint8_t paramId;     // Parameter/command ID
+    const uint8_t* payload;  // Pointer to payload start
+    size_t payloadLen;   // Payload length in bytes
+};
+
+// Parsed response data (union for different types)
+struct ResponseData {
+    bool isAck;
+    bool isNack;
+    uint8_t nackCode;  // Only valid if isNack=true
+
+    union {
+        struct {
+            uint8_t batteryPercent;
+        } soc;
+
+        struct {
+            uint8_t level;  // 0=indoor, 1=outdoor, 2=learning
+        } assistLevel;
+
+        struct {
+            uint8_t mode;
+            bool autoHold;
+            bool cruise;
+            bool remote;
+        } driveMode;
+
+        struct {
+            uint8_t devState;
+            uint8_t major;
+            uint8_t minor;
+            uint8_t patch;
+        } swVersion;
+
+        struct {
+            uint32_t distanceMm;     // Overall distance in 0.01m
+            float distanceKm;        // Converted to km
+            uint16_t speed;          // Current speed
+            uint16_t pushCounter;    // Push count
+        } cruiseValues;
+    };
+};
+
+// ---------------------------------------------------------------------------
+// Type-safe payload parsing helpers
+// ---------------------------------------------------------------------------
+
+static inline uint8_t _parseUint8(const uint8_t* payload, size_t offset) {
+    return payload[offset];
+}
+
+static inline int16_t _parseInt16BE(const uint8_t* payload, size_t offset) {
+    return (int16_t)(((uint16_t)payload[offset] << 8) | payload[offset + 1]);
+}
+
+static inline uint16_t _parseUint16BE(const uint8_t* payload, size_t offset) {
+    return ((uint16_t)payload[offset] << 8) | payload[offset + 1];
+}
+
+static inline uint32_t _parseUint32BE(const uint8_t* payload, size_t offset) {
+    return ((uint32_t)payload[offset] << 24) |
+        ((uint32_t)payload[offset + 1] << 16) |
+        ((uint32_t)payload[offset + 2] << 8) |
+        (uint32_t)payload[offset + 3];
+}
+
+static inline int32_t _parseInt32BE(const uint8_t* payload, size_t offset) {
+    return (int32_t)_parseUint32BE(payload, offset);
+}
+
+// ---------------------------------------------------------------------------
+// Per-wheel connection state
+// ---------------------------------------------------------------------------
+struct WheelConnState_t {
+    char                         mac[18];   // runtime-mutable "XX:XX:XX:XX:XX:XX\0"
+    const char* name;
+    uint8_t                      key[16];   // runtime-mutable AES-128 key
+    bool                         connected;
+    bool                         protocolReady;      // SYSTEM_MODE + DRIVE_MODE acked
+    uint8_t                      telegramId;         // SPP sequence counter
+    uint8_t                      driveModeBits;      // current DRIVE_MODE byte
+#if M25_TRANSPORT_BLE
+    BLEClient* client;
+    BLERemoteCharacteristic* rxChar;             // For writing commands to wheel
+    BLERemoteCharacteristic* txChar;             // For receiving responses from wheel
+    bool                         rxWriteWithResponse; // true when RX char requires write-with-response
+#endif
+#if M25_TRANSPORT_RFCOMM
+    esp_bd_addr_t                bda;                // parsed runtime MAC for esp_spp_connect
+    uint32_t                     sppHandle;          // active RFCOMM handle (0 when disconnected)
+#endif
+    bool                         receivedFirstAck;
+    uint32_t                     lastConnectAttemptMs;
+    uint8_t                      consecutiveFails;   // resets on success; auto-reconnect stops at BLE_MAX_RECONNECT_FAILS
+    volatile uint32_t            lastNotifyMs;       // millis() of last successful notify; 0 before first notify
+    volatile uint8_t             driveModeReadbackBits; // last parsed STATUS/READ drive mode
+    volatile uint32_t            driveModeReadbackMs;   // millis() timestamp of last parsed drive mode
+    bool                         driveModeReadbackValid;
+    uint8_t                      txFailStreak;       // consecutive TX failures within BLE_TX_FAIL_WINDOW_MS
+    uint32_t                     lastTxFailMs;       // millis() of most recent TX failure
+
+    // ---------------------------------------------------------------------------
+    // Cached telemetry (updated asynchronously by the BLE notification callback)
+    // ---------------------------------------------------------------------------
+    int8_t   batteryPct;        // State of charge 0-100 %; -1 = not yet received
+    bool     batteryValid;      // true once a STATUS_SOC response has been parsed
+    uint8_t  fwMajor;           // Firmware version fields
+    uint8_t  fwMinor;
+    uint8_t  fwPatch;
+    bool     fwValid;           // true once STATUS_SW_VERSION has been parsed
+    float    distanceKm;        // Overall odometer in km (from CRUISE_VALUES)
+    bool     distanceValid;     // true once CRUISE_VALUES has been parsed
+};
+
+// ---------------------------------------------------------------------------
+// BLE disconnect callback
+// ---------------------------------------------------------------------------
+#if M25_TRANSPORT_BLE
+class M25DisconnectCallback : public BLEClientCallbacks {
+public:
+    uint8_t wheelIdx;
+    void onConnect(BLEClient*) override;
+    void onDisconnect(BLEClient*) override;
+};
+#endif
+
+// ---------------------------------------------------------------------------
+// Compile-time default keys (copied into mutable _wheels storage by bleInit)
+// ---------------------------------------------------------------------------
+static const uint8_t _keyDefaultLeft[16] = ENCRYPTION_KEY_LEFT;
+static const uint8_t _keyDefaultRight[16] = ENCRYPTION_KEY_RIGHT;
+
+// ---------------------------------------------------------------------------
+// Internal storage accessors (defined in m25_ble.cpp)
+// ---------------------------------------------------------------------------
+WheelConnState_t* _getWheels();
+bool& _getBleAutoReconnect();
+
+#define _wheels (_getWheels())
+#define _bleAutoReconnect (_getBleAutoReconnect())
+
+// ---------------------------------------------------------------------------
+// Internal function declarations
+// ---------------------------------------------------------------------------
+
+// CRC-16 calculation
+uint16_t _m25Crc16(const uint8_t* data, size_t len);
+
+// Byte stuffing / unstuffing
+size_t _addDelimiters(const uint8_t* in, size_t inLen, uint8_t* out);
+size_t _removeDelimiters(const uint8_t* in, size_t inLen, uint8_t* out, size_t outMax);
+
+// NACK error code interpretation
+const char* _nackCodeToString(uint8_t code);
+bool _isNack(uint8_t paramId);
+bool _isAck(uint8_t paramId);
+
+// Wheel activity filter (respects WHEEL_MODE)
+bool _wheelActive(int idx);
+
+// Encryption/decryption
+bool _m25Encrypt(const uint8_t* key, const uint8_t* spp, uint8_t sppLen,
+    uint8_t* out, size_t* outLen);
+bool _m25Decrypt(const uint8_t* key, const uint8_t* frame, size_t frameLen,
+    uint8_t* sppOut, size_t* sppLen);
+
+// SPP packet building and sending
+size_t _buildAndEncrypt(int idx, uint8_t serviceId, uint8_t paramId,
+    const uint8_t* payload, uint8_t payloadLen,
+    uint8_t* out,
+    uint8_t* sppOut = nullptr,
+    uint8_t* sppLenOut = nullptr);
+bool _sendCommand(int idx, uint8_t serviceId, uint8_t paramId,
+    const uint8_t* payload = nullptr, uint8_t payloadLen = 0);
+
+// Response parsing
+bool _parseResponseHeader(const uint8_t* spp, size_t sppLen, ResponseHeader* hdr);
+bool _parseResponseData(const ResponseHeader* hdr, ResponseData* data);
+void _printResponse(const char* wheelName, const ResponseHeader* hdr, const ResponseData* data);
+void _updateWheelCache(int wheelIdx, const ResponseHeader* hdr, const ResponseData* data);
+void _parseSppPacket(const uint8_t* spp, size_t sppLen, int wheelIdx);
+
+// BLE notification callback
+#if M25_TRANSPORT_BLE
+void _notifyCallback(BLERemoteCharacteristic* pChar, uint8_t* pData, size_t length, bool isNotify);
+#endif
+
+// Connection management
+bool _connectWheel(int idx);
+
+// ---------------------------------------------------------------------------
+// Public API declarations
+// ---------------------------------------------------------------------------
+
+// Initialization - call once in setup()
+void bleInit(const char* deviceName = "M25-Remote");
+
+// Connect to active wheels (call after bleInit)
+void bleConnect();
+
+// Connect a single wheel by index (respects WHEEL_MODE; returns true if connected or inactive)
+bool bleConnectWheel(int idx);
+
+// Disconnect all wheels - stop motors and disable remote mode first
+void bleDisconnect();
+
+// Hard-reset a single wheel's BLE state: disconnect client, null it, clear all protocol fields.
+// Call before retrying a failed wheel to ensure a clean slate.
+void bleResetWheel(int idx);
+
+// Full BLE stack reset: disconnect all wheels, deinit Bluedroid, reinit from scratch.
+// Call when repeated GATT errors suggest the local Bluedroid state is wedged.
+// All compile-time MAC/key defaults are restored; runtime bleSetMac/bleSetKey overrides are lost.
+void bleFullReset();
+
+// Connection status queries
+bool bleIsConnected(int wheelIdx);
+bool bleAllConnected();  // True when every active wheel is connected and protocol-ready
+bool bleAnyConnected();  // True when at least one active wheel is connected
+
+// Motor write task - must be called once from setup() after bleInit().
+// Spawns a FreeRTOS task on Core 0 that services motor write requests
+// asynchronously, preventing BLE writeValue() from blocking loop().
+void bleStartMotorTask();
+
+// Returns false if the most recent motor write dispatched by the task
+// failed (rc=-1 GATT error, connection drop, etc.).  Checked each update
+// by the supervisor watchdog; resets to true when the next write succeeds.
+bool bleLastMotorWriteOk();
+// Reset the write-ok flag.  Call when re-arming after a failsafe so that
+// a stale failure from a previous connection does not trip the watchdog.
+void bleResetMotorWriteOk();
+
+// Returns the millis() timestamp of the last BLE notification received from the given wheel.
+// Returns 0 if no notification has been received since connection.
+// Used by the stale-notify watchdog in Supervisor::checkWatchdogs().
+uint32_t bleGetLastNotifyMs(int idx);
+
+// Reset the notify timestamps for all active wheels to now.
+// Call on entry to DRIVING so the stale-notify watchdog window starts from
+// motor engagement rather than from the (potentially old) connection time.
+void bleResetNotifyTimers();
+
+// Motor commands (post to motor task queue - non-blocking)
+bool bleSendStop();
+bool bleSendMotorCommand(float leftPercent, float rightPercent);
+
+// Motor debug-log filtering for STOP spam control.
+// When enabled, STOP logs are emitted every Nth STOP per wheel while motor logging is enabled.
+void bleSetMotorStopLogEnabled(bool enable);
+bool bleGetMotorStopLogEnabled();
+void bleSetMotorStopLogEvery(uint16_t every);
+uint16_t bleGetMotorStopLogEvery();
+
+// Hill hold control
+bool bleSendHillHold(bool enable);
+
+// Assist level control
+bool bleSendAssistLevel(uint8_t level);
+
+// Background tick: attempt reconnect if a wheel dropped out. Call from loop().
+void bleTick();
+
+// Auto-reconnect control
+void bleSetAutoReconnect(bool enable);
+bool bleGetAutoReconnect();
+
+// TX statistics (actual command attempts/success/failure) for diagnostics.
+void blePrintTxStats();
+void bleResetTxStats();
+
+// Runtime MAC address / key override
+void bleSetMac(int idx, const char* mac);
+void bleSetKey(int idx, const uint8_t* newKey);
+
+// Verbose per-wheel status dump (called by serial 'wheels' command)
+void blePrintWheelDetails();
+
+// ---------------------------------------------------------------------------
+// Telemetry request functions (fire-and-forget; results arrive via notification)
+// idx = WHEEL_LEFT / WHEEL_RIGHT; pass -1 to send to all connected wheels
+// ---------------------------------------------------------------------------
+bool bleRequestSOC(int idx = -1);             // Battery state of charge
+bool bleRequestFirmwareVersion(int idx = -1); // SW version
+bool bleRequestCruiseValues(int idx = -1);    // Odometer, speed, push counter
+
+// ---------------------------------------------------------------------------
+// Cached telemetry getters
+// Return false / -1 if data has not yet been received for that wheel
+// ---------------------------------------------------------------------------
+int8_t bleGetBattery(int idx);   // 0-100 %, or -1 if unavailable
+bool   bleGetFirmwareVersion(int idx, uint8_t& major, uint8_t& minor, uint8_t& patch);
+float  bleGetDistanceKm(int idx);             // km, or -1.0f if unavailable
+
+// ---------------------------------------------------------------------------
+// BLE traffic recorder
+//
+// Records raw incoming (RX) and outgoing (TX) BLE frames to a ring buffer
+// for offline analysis.  Useful when working with live wheels to capture
+// actual on-wire traffic and determine timing, frame content, etc.
+//
+// Usage:
+//   bleRecordStart(15000);     // record for 15 s (auto-dumps when done)
+//   bleRecordStop();           // stop early
+//   bleRecordDump();           // print captured log to Serial
+// ---------------------------------------------------------------------------
+#define BLE_RECORD_MAX     200   // max entries (ring buffer - oldest overwritten)
+#define BLE_RECORD_PAYLOAD  48   // bytes stored per frame (rest truncated)
+
+// Direction codes stored in BleRecordEntry::direction
+#define BLE_REC_TX  0   // outgoing frame (remote -> wheel)
+#define BLE_REC_RX  1   // incoming frame (wheel  -> remote)
+
+struct BleRecordEntry {
+    uint32_t ms;          // millis() at capture time
+    uint8_t  direction;   // BLE_REC_TX or BLE_REC_RX
+    uint8_t  wheel;       // WHEEL_LEFT or WHEEL_RIGHT
+    uint8_t  rawLen;      // original frame byte length (may exceed BLE_RECORD_PAYLOAD)
+    uint8_t  data[BLE_RECORD_PAYLOAD];  // frame bytes (truncated if rawLen > BLE_RECORD_PAYLOAD)
+};
+
+// Start recording for durationMs milliseconds.  Clears any previous capture.
+// Auto-stops and auto-dumps when the duration expires (checked in bleTick()).
+void bleRecordStart(uint32_t durationMs = 10000);
+
+// Stop recording early without dumping.
+void bleRecordStop();
+
+// Print all captured entries to Serial in hex-dump format.
+void bleRecordDump();
+
+// Return true while recording is active.
+bool bleRecordIsActive();
+
+// Return the number of entries currently in the buffer.
+uint32_t bleRecordEntryCount();
+
+// Internal helper ─ called by _sendCommand() and _notifyCallback() to capture frames.
+void _bleRecordFrame(uint8_t dir, uint8_t wheelIdx, const uint8_t* data, size_t len);
+
+#endif // M25_BLE_H
+
