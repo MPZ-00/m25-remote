@@ -18,6 +18,14 @@ __pycache__/
 *.pyc
 *.pyo
 
+# IDEs and tools
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
