@@ -1,0 +1,15 @@
+# Normalize all text files to LF in the repo; check out as LF everywhere.
+# This prevents CRLF from sneaking in from Windows editors.
+* text=auto eol=lf
+
+# Windows-only scripts — PowerShell and batch are safest with CRLF on checkout.
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Explicitly binary — never mangle these.
+*.bin    binary
+*.elf    binary
+*.hex    binary
+*.png    binary
+*.jpg    binary
