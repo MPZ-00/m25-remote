@@ -299,6 +299,9 @@ void setup() {
     joystickRecalibrate();
 
     bleInit("M25-Remote");
+    // Supervisor manages all reconnection; disable bleTick()'s parallel
+    // auto-reconnect path to avoid racing with the connect task on Core 0.
+    bleSetAutoReconnect(false);
     bleStartMotorTask();   // spawn async write task on Core 0
     ledSetAssistLevel(assistLevel);
     ledSetHillHold(hillHoldOn);
@@ -471,4 +474,8 @@ void loop() {
     ledUpdateBle(bleAnyConnected(), bleAllConnected());
     ledTick();
     buzzerTick();
+    // BLE housekeeping: auto-stops the traffic recorder when its duration expires.
+    // Auto-reconnect is disabled (bleSetAutoReconnect(false) in setup); the
+    // Supervisor owns all reconnection logic.
+    bleTick();
 }

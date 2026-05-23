@@ -70,12 +70,11 @@
 #define WHEEL_MODE_NAME "Unknown"
 #endif
 
-#define M25_TRANSPORT_RFCOMM 0
-#define M25_TRANSPORT_BLE 1
-
 // ---------------------------------------------------------------------------
 // Transport selection
-// Exactly one transport must be enabled.
+// Exactly one transport must be enabled.  Default: BLE.
+// Override via PlatformIO build flag:
+//   -DM25_TRANSPORT_BLE=0 -DM25_TRANSPORT_RFCOMM=1
 // ---------------------------------------------------------------------------
 #ifndef M25_TRANSPORT_RFCOMM
 #define M25_TRANSPORT_RFCOMM 0
