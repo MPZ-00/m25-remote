@@ -32,6 +32,14 @@
 #include "buzzer.h"
 #include "Logger.h"
 
+// ---------------------------------------------------------------------------
+// Button instances (declared extern in button.h)
+// ---------------------------------------------------------------------------
+Button btnEstop    = { BTN_ESTOP_PIN };
+Button btnHillHold = { BTN_HILL_HOLD_PIN };
+Button btnAssist   = { BTN_ASSIST_PIN };
+Button btnPower    = { BTN_POWER_PIN };
+
 static SystemState sysState = STATE_BOOT;
 
 // ---------------------------------------------------------------------------

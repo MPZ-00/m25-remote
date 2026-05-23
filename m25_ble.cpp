@@ -1533,6 +1533,10 @@ bool _connectWheel(int idx) {
 
     const uint32_t startMs = millis();
     while (!_rfcommOpenEvt[idx] && (millis() - startMs) < RFCOMM_CONNECT_TIMEOUT_MS) {
+        // ledTick/buzzerTick keep UI responsive during the blocking wait.
+        // TODO: these are Core 1 peripherals driven from Core 0 here; if this
+        // causes LED/buzzer glitches in a dual-core build, replace with a
+        // semaphore-guarded call or a flag that loop() services instead.
         extern void ledTick();
         extern void buzzerTick();
         ledTick();

@@ -51,6 +51,9 @@ struct JoystickNorm {
 
 // ---------------------------------------------------------------------------
 // Internal state
+// NOTE: static file-scope variables in a header give each translation unit
+// that includes this file its own independent copy of the calibration state.
+// joystick.h must therefore be included from exactly one TU (the main .ino).
 // ---------------------------------------------------------------------------
 static int _jsXCenter = JOYSTICK_CENTER;
 static int _jsYCenter = JOYSTICK_CENTER;
@@ -216,11 +219,22 @@ inline JoystickNorm joystickRead() {
 }
 
 // ---------------------------------------------------------------------------
-// Re-calibrate center position (call at runtime when joystick is known
-// to be at rest, e.g. during the power-on safety check)
+// Re-calibrate center position at runtime (joystick must be at rest).
+// Lighter than joystickInit(): skips pin setup, warm-up reads, boot probe,
+// and pin-map log — just re-samples the center position.
 // ---------------------------------------------------------------------------
 inline void joystickRecalibrate() {
-    joystickInit();
+    const int calSamples = 32;
+    long sumX = 0, sumY = 0;
+    for (int i = 0; i < calSamples; i++) {
+        sumX += analogRead(JOYSTICK_X_PIN);
+        sumY += analogRead(JOYSTICK_Y_PIN);
+        delay(4);
+    }
+    _jsXCenter = (int)(sumX / calSamples);
+    _jsYCenter = (int)(sumY / calSamples);
+    Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
+        "Recalibrated center: X=%d Y=%d", _jsXCenter, _jsYCenter);
 }
 
 #endif // !NO_JOYSTICK

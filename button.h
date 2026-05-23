@@ -80,12 +80,14 @@ struct Button {
 };
 
 // ---------------------------------------------------------------------------
-// Button instances (global, accessed from main sketch)
+// Button instances - defined once in remote_control.ino, declared extern here.
+// Keeping them extern prevents an ODR (multiple-definition) linker error if
+// this header is ever included from more than one translation unit.
 // ---------------------------------------------------------------------------
-Button btnEstop = { BTN_ESTOP_PIN };
-Button btnHillHold = { BTN_HILL_HOLD_PIN };
-Button btnAssist = { BTN_ASSIST_PIN };
-Button btnPower = { BTN_POWER_PIN };
+extern Button btnEstop;
+extern Button btnHillHold;
+extern Button btnAssist;
+extern Button btnPower;
 
 // ---------------------------------------------------------------------------
 // Convenience functions
