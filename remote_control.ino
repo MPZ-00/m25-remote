@@ -60,10 +60,12 @@ static Mapper mapper(mapperConfig);
 static SupervisorConfig supervisorConfig;
 static Supervisor supervisor(mapper, supervisorConfig);
 
-// Supervisor connection change callback (called from BLE disconnect callback)
-void supervisorNotifyConnectionChange() {
-    supervisor.notifyConnectionChange();
-}
+//! TODO: supervisor.notifyConnectionChange() exists as a fast-path failsafe for
+// simultaneous dual-wheel disconnect. It is not yet wired to the BLE disconnect
+// callback because it calls enterFailsafe(), which modifies Supervisor state and
+// calls bleSendStop(). From Core 0 without synchronisation.  The Supervisor's
+// polling in handlePaired/Armed/Driving detects disconnects within one update
+// cycle (50 ms); wire this when a thread-safe event queue is available.
 
 static void onSupervisorStateChange(SupervisorState oldState, SupervisorState newState) {
     (void)oldState;
