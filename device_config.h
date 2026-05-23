@@ -251,9 +251,13 @@ enum SystemState : uint8_t {
 // deadman permanently high - in that case the joystick leaving the deadzone
 // is the only trigger required to start driving (no separate button needed).
 //
+// SAFETY: with NO_DEADMAN_HARDWARE a stuck joystick (hardware fault, vibration,
+// ADC noise) will command the wheelchair to drive without user intent.
+// Remove this define as soon as a physical deadman button is wired.
+//
 // Note: the mapper deadzone and the supervisor input watchdog still provide
-// safety - releasing the joystick to center stops the wheels immediately.
+// layered safety - releasing the joystick to centre stops the wheels immediately.
 // ---------------------------------------------------------------------------
-#define NO_DEADMAN_HARDWARE
+#define NO_DEADMAN_HARDWARE   // TODO: remove when deadman button is wired
 
 #endif // DEVICE_CONFIG_H

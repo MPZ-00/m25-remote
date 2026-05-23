@@ -726,6 +726,14 @@ bool _m25Decrypt(const uint8_t* key, const uint8_t* frame, size_t frameLen,
     // Calculate encrypted data length (payload - IV - CRC)
     size_t encDataLen = frameLen - M25_HEADER_SIZE - 16 - M25_CRC_SIZE;
     if (encDataLen == 0 || encDataLen % 16 != 0) return false;
+    // Guard: decrypted[] below is 64 bytes; CBC writes encDataLen bytes into it.
+    // All known M25 responses fit in ≤32 bytes (≤2 AES blocks). Reject anything
+    // larger to prevent a stack overflow from an unexpected or malformed packet.
+    if (encDataLen > 64u) {
+        LOG_WARN(TAG_CRYPTO, "BLE-DEC: encDataLen %u exceeds decrypt buffer (64) - rejecting",
+            (unsigned)encDataLen);
+        return false;
+    }
     const uint8_t* encData = ivEnc + 16;
 
     // Decrypt IV with AES-128-ECB
