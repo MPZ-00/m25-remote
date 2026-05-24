@@ -77,7 +77,7 @@ Joystick (ADC) → ControlState → Mapper → CommandFrame → Supervisor → B
 | `mapper.h/.cpp` | Input → command (deadzone, curves, differential drive, speed limits) — **safety-critical** |
 | `supervisor.h/.cpp` | State machine, input/link watchdogs, auto-reconnect, BLE connect task — **safety-critical** |
 | `m25_ble.h/.cpp` | Full M25 BLE stack: AES-128-CBC, CRC-16, byte stuffing, GATT client, motor write task, response parser |
-| `nvs_config.h` | Persist wheel MACs/keys to NVS (survives reboot); loaded in `setup()` |
+| `nvs_config.h` | Persist wheel MACs/keys/assist level to NVS (survives reboot); loaded in `setup()` |
 | `serial_commands.h` | UART REPL — `serialInit()` in `setup()`, `serialTick()` in `loop()` |
 | `Logger.h/.cpp` | Singleton tag-based logger; `logForced()` bypasses runtime filtering for safety events |
 | `joystick.h` | ADC1 oversampling, deadzone, `joystickRecalibrate()` |
@@ -100,11 +100,11 @@ Joystick X/Y **must use ADC1 pins (GPIO 32–39)**. ADC2 (GPIO 0,2,4,12–15,25�
 
 ### Configuration priority
 
-1. NVS (runtime `setmac`/`setkey` serial commands — highest priority, survives reboot)
+1. NVS (runtime `setmac`/`setkey`/`assist` serial commands — highest priority, survives reboot)
 2. `.env` build-time injection via `load_env.py` (`ENV_*` macros)
 3. `device_config.h` compiled-in defaults (fallback)
 
-Use `config show` over serial to see which source is active for each wheel.
+Use `config show` over serial to see which source is active for each setting.
 
 ## Feature flags (`device_config.h`)
 

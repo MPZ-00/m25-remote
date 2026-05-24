@@ -46,7 +46,8 @@ arm / disarm    PAIRED ↔ ARMED
 stop            Emergency stop → FAILSAFE
 reset           FAILSAFE → reconnect
 setmac / setkey Change wheel credentials (persisted to NVS)
-config show     Show active MAC/key source (NVS vs build default)
+assist <0|1|2>  Set assist level: 0=indoor 1=outdoor 2=learning (persisted to NVS)
+config show     Show active MACs, keys, and assist level (NVS vs build default)
 js              Joystick snapshot
 log tag motor on  Enable 20 Hz motor command logging
 record start [N]  Capture BLE traffic for N seconds
@@ -67,7 +68,7 @@ Power button enters deep sleep (OFF) from any state; wakes on power button press
 ## Configuration
 
 Three-tier priority (highest wins):
-1. **NVS** — set at runtime via `setmac`/`setkey`, survives reboot
+1. **NVS** — set at runtime via `setmac`/`setkey`/`assist`, survives reboot
 2. **`.env`** — injected by `load_env.py` at build time (`ENV_*` macros)
 3. **`device_config.h`** — compiled-in fallback
 
