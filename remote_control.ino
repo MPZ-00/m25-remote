@@ -112,6 +112,10 @@ static void onSupervisorStateChange(SupervisorState oldState, SupervisorState ne
     case SUPERVISOR_PAIRED:
         ledSetStatus(LED_OFF);
         buzzerPlay(BUZZ_CONFIRM);
+        // Re-sync assist level to wheel, resets to its own default on disconnect.
+        bleSendAssistLevel(assistLevel);
+        LOG_INFO(TAG_SUPERVISOR, "Assist level re-synced to wheel: %s",
+            assistConfigs[assistLevel].name);
         break;
 
     case SUPERVISOR_ARMED:
