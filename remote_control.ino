@@ -45,7 +45,7 @@ static SystemState sysState = STATE_BOOT;
 // ---------------------------------------------------------------------------
 // Persistent control state
 // ---------------------------------------------------------------------------
-static uint8_t assistLevel = ASSIST_INDOOR;   // boot default: indoor
+static uint8_t assistLevel = ASSIST_INDOOR;   // overwritten by NVS load in setup()
 static bool    hillHoldOn = false;
 #ifdef ENABLE_BATTERY_MONITOR
 static int     batteryPct = 100;

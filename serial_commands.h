@@ -18,7 +18,7 @@
  *   ble                         BLE connection status for each wheel
  *   wheels                      Verbose per-wheel status + key
  *   telemetry                   Request fresh telemetry from wheels + print cached values
- *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning
+ *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning  (persisted to NVS)
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
  *   recal                       Recalibrate joystick center position
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
@@ -219,7 +219,7 @@ static void _scPrintHelp() {
     _scCmdOut("  setmac <left|right> <MAC> Change wheel MAC (disconnects)");
     _scCmdOut("  setkey <left|right> <hex> Change AES key (32 hex chars)");
     _scCmdOut("--- Control ---");
-    _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning");
+    _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning  (persisted)");
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
     _scCmdOut("  recal                     Recalibrate joystick center");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
@@ -227,7 +227,7 @@ static void _scPrintHelp() {
     _scCmdOut("  stop                      Software emergency stop (-> FAILSAFE)");
     _scCmdOut("  reset                     Clear FAILSAFE state -> reconnect");
     _scCmdOut("--- Config (NVS) ---");
-    _scCmdOut("  config show               Print MACs and keys (NVS vs build default)");
+    _scCmdOut("  config show               Print MACs, keys, and assist level (NVS vs build default)");
     _scCmdOut("  config reset              Clear NVS; build defaults on next boot");
     _scCmdOut("  config profile <env|default> Persist+apply profile now, then reconnect");
     _scCmdOut("                               env requires build-time .env values");
