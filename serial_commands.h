@@ -752,9 +752,10 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             return;
         }
         *ctx.assistLevel = (uint8_t)lvl;
+        nvsSaveAssistLevel(*ctx.assistLevel);
         ledSetAssistLevel(*ctx.assistLevel);
         bleSendAssistLevel(*ctx.assistLevel);
-        _scCmdOutf("Assist -> %s", assistConfigs[*ctx.assistLevel].name);
+        _scCmdOutf("Assist -> %s (persisted to NVS)", assistConfigs[*ctx.assistLevel].name);
         return;
     }
 

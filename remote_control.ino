@@ -313,6 +313,10 @@ void setup() {
     // auto-reconnect path to avoid racing with the connect task on Core 0.
     bleSetAutoReconnect(false);
     bleStartMotorTask();   // spawn async write task on Core 0
+
+    // Load persisted assist level (falls back to ASSIST_INDOOR if not set).
+    nvsLoadAssistLevel(&assistLevel);
+
     ledSetAssistLevel(assistLevel);
     ledSetHillHold(hillHoldOn);
 
@@ -446,6 +450,7 @@ void loop() {
     if (assistPressed) {
         if (supState == SUPERVISOR_PAIRED || supState == SUPERVISOR_ARMED) {
             assistLevel = (assistLevel + 1) % ASSIST_COUNT;
+            nvsSaveAssistLevel(assistLevel);
             ledSetAssistLevel(assistLevel);
             buzzerPlay(BUZZ_CONFIRM);
             bleSendAssistLevel(assistLevel);

@@ -14,15 +14,17 @@
  *   nvsLoadMac(WHEEL_RIGHT, rmac, sizeof(rmac));
  *   nvsLoadKey(WHEEL_LEFT,  lkey);
  *   nvsLoadKey(WHEEL_RIGHT, rkey);
+ *   nvsLoadAssistLevel(&assistLevel);   // load before first ledSetAssistLevel()
  *   supervisor.requestConnect(lmac, rmac, lkey, rkey);
  *
  * Serial commands (wired in serial_commands.h):
- *   config show               Print MACs and keys, flag NVS vs compiled default
+ *   config show               Print MACs, keys, and assist level (NVS vs compiled default)
  *   config reset              Clear NVS; compiled defaults take effect on reboot
  *   setmac left  <MAC>        Change + persist left  wheel MAC
  *   setmac right <MAC>        Change + persist right wheel MAC
  *   setkey left  <32hex>      Change + persist left  wheel AES key
  *   setkey right <32hex>      Change + persist right wheel AES key
+ *   assist <0|1|2>            Change assist level + persist (survives reboot)
  */
 
 #ifndef NVS_CONFIG_H
@@ -40,10 +42,11 @@
  // Compiled-in fallbacks (from device_config.h, possibly overridden by build
  // flags injected by load_env.py)
  // ---------------------------------------------------------------------------
-static const char    _nvsDfltLMac[] = LEFT_WHEEL_MAC;
-static const char    _nvsDfltRMac[] = RIGHT_WHEEL_MAC;
-static const uint8_t _nvsDfltLKey[] = ENCRYPTION_KEY_LEFT;
-static const uint8_t _nvsDfltRKey[] = ENCRYPTION_KEY_RIGHT;
+static const char    _nvsDfltLMac[]  = LEFT_WHEEL_MAC;
+static const char    _nvsDfltRMac[]  = RIGHT_WHEEL_MAC;
+static const uint8_t _nvsDfltLKey[]  = ENCRYPTION_KEY_LEFT;
+static const uint8_t _nvsDfltRKey[]  = ENCRYPTION_KEY_RIGHT;
+static const uint8_t _nvsDfltAssist  = ASSIST_INDOOR;
 
 // ---------------------------------------------------------------------------
 // Load MAC for wheel idx into buf (must be >= 18 chars).
@@ -113,6 +116,40 @@ inline bool nvsSaveKey(int idx, const uint8_t* key16) {
 }
 
 // ---------------------------------------------------------------------------
+// Load persisted assist level into *level.
+// Returns true if an NVS value was found, false if using compiled default.
+// Falls back to ASSIST_INDOOR if NVS is empty or value is out of range.
+// ---------------------------------------------------------------------------
+inline bool nvsLoadAssistLevel(uint8_t* level) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) {
+        *level = _nvsDfltAssist;
+        return false;
+    }
+    uint8_t val = p.getUChar("assist", 0xFF);
+    p.end();
+    if (val < ASSIST_COUNT) {
+        *level = val;
+        return true;
+    }
+    *level = _nvsDfltAssist;
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Persist assist level (0 = Indoor, 1 = Outdoor, 2 = Learning).
+// Returns true on success. Rejects values >= ASSIST_COUNT.
+// ---------------------------------------------------------------------------
+inline bool nvsSaveAssistLevel(uint8_t level) {
+    if (level >= ASSIST_COUNT) return false;
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("assist", level) == 1;
+    p.end();
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
 // Erase all NVS config; compiled-in defaults take effect on next reboot.
 // ---------------------------------------------------------------------------
 inline void nvsClearAll() {
@@ -128,10 +165,12 @@ inline void nvsClearAll() {
 inline void nvsPrintAll() {
     char    lmac[18], rmac[18];
     uint8_t lkey[16], rkey[16];
-    bool lmacNvs = nvsLoadMac(WHEEL_LEFT, lmac, sizeof(lmac));
-    bool rmacNvs = nvsLoadMac(WHEEL_RIGHT, rmac, sizeof(rmac));
-    bool lkeyNvs = nvsLoadKey(WHEEL_LEFT, lkey);
-    bool rkeyNvs = nvsLoadKey(WHEEL_RIGHT, rkey);
+    uint8_t assist;
+    bool lmacNvs   = nvsLoadMac(WHEEL_LEFT,  lmac, sizeof(lmac));
+    bool rmacNvs   = nvsLoadMac(WHEEL_RIGHT, rmac, sizeof(rmac));
+    bool lkeyNvs   = nvsLoadKey(WHEEL_LEFT,  lkey);
+    bool rkeyNvs   = nvsLoadKey(WHEEL_RIGHT, rkey);
+    bool assistNvs = nvsLoadAssistLevel(&assist);
 
     char lkeyHex[33];
     char rkeyHex[33];
@@ -140,11 +179,16 @@ inline void nvsPrintAll() {
         snprintf(&rkeyHex[i * 2], 3, "%02x", rkey[i]);
     }
 
+    const char* assistName = (assist == 0) ? "Indoor" :
+                             (assist == 1) ? "Outdoor" : "Learning";
+
     LOG_INFO(TAG_CONFIG, "--- Wheel Configuration ---");
-    LOG_INFO(TAG_CONFIG, "Left  MAC : %s  (%s)", lmac, lmacNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Right MAC : %s  (%s)", rmac, rmacNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Left  Key : %s  (%s)", lkeyHex, lkeyNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Right Key : %s  (%s)", rkeyHex, rkeyNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Left  MAC    : %s  (%s)", lmac, lmacNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Right MAC    : %s  (%s)", rmac, rmacNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Left  Key    : %s  (%s)", lkeyHex, lkeyNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Right Key    : %s  (%s)", rkeyHex, rkeyNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Assist level : %u (%s)  (%s)", assist, assistName,
+             assistNvs ? "NVS" : "build default");
     LOG_INFO(TAG_CONFIG, "Changes take effect immediately and survive reboot");
     LOG_INFO(TAG_CONFIG, "'config reset' clears NVS; build defaults restored on next boot");
 }
