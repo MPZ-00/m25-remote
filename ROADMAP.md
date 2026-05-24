@@ -1,427 +1,275 @@
-# ESP32 M25 Remote Control - Implementation Roadmap
+# ESP32 M25 remote control: roadmap
 
-**Goal:** Fully standalone remote with vendor ECS + mobile app features
+**Goal:** Fully standalone remote with vendor ECS + mobile app features, in a custom enclosure.
 
-**Current State:**
-- Bidirectional BLE working (dual-wheel, encryption validated per-wheel)
-- Full state machine with watchdogs, fail-safe, auto-reconnect
-- Per-wheel retry budgets with hard state reset on failure
-- Smooth control via mapper (curves, ramping, differential drive)
-- Serial debug interface operational
-- Response parsing: ACK/encryption validation done; telemetry payloads not yet parsed
+**Hardware target:** ESP32-WROOM-32 (ESP32-D0WD-V3)
 
-**Target State:** 
-- Standalone operation (no PC/phone required)
-- Button + LED interface (one-handed)
-- Professional-grade safety core
-- Full bidirectional communication
+**Last updated:** 2026-05-24
 
 ---
 
-## Phase 1: Core Safety
-**Priority:** CRITICAL | **Dependencies:** None
+## Current state
 
-### 1.1 Port Mapper ✓ COMPLETE
-**Reference:** `core/mapper.py`
-
-- [x] Response curves (exponential/quadratic for fine control)
-- [x] Deadzone handling
-- [x] Acceleration ramping with delta-time tracking
-- [x] Differential drive kinematics
-- [x] Speed limiting per mode (slow/normal/fast)
-- [x] Safety interlocks
-
-**Deliverable:** `mapper.h`, `mapper.cpp` - Smooth, predictable control
-**Success Criteria:** No jerky movements, smooth turns
-**Status:** Implemented 2026-03-01
-**Files:** 
-- `esp32/arduino/remote_control/mapper.h` - Header and interface
-- `esp32/arduino/remote_control/mapper.cpp` - Implementation
-- `esp32/arduino/tests/test_mapper/` - Unit tests (isolated)
-**Testing:** Automated via `esp32/arduino/tests/run_tests.ps1`
-
-### 1.2 Port Supervisor ✓ COMPLETE
-**Reference:** `core/supervisor.py`
-
-- [x] Extended state machine
-  - Add INITIALIZING state (wait for wheel telemetry)
-  - Proper error recovery
-- [x] Multiple watchdogs
-  - Input timeout (stop if no joystick input)
-  - Link timeout (detect connection drops)
-  - Heartbeat keepalive
-- [x] Auto-reconnection
-  - Per-wheel independent retry budgets (not global)
-  - Hard BLE state reset per failed wheel attempt before next retry
-  - Outcome deferred until all wheels are connected or budgets exhausted
-- [x] Telemetry monitoring
-- [x] Vehicle state caching (battery, speed, distance)
-
-**Deliverable:** `supervisor.h`, `supervisor.cpp` - Robust fault-tolerant control
-**Success Criteria:** Recovers from connection loss, no runaway conditions
-**Status:** Implemented 2026-03-01
-**Files:** 
-- `esp32/arduino/remote_control/supervisor.h` - Header and interface
-- `esp32/arduino/remote_control/supervisor.cpp` - Implementation
-- `esp32/arduino/tests/test_supervisor/` - Unit tests
-**Testing:** Automated via `esp32/arduino/tests/run_tests.ps1`
-
-### 1.3 Port Types
-**Reference:** `core/types.py`
-
-- [x] Data structures
-  - ControlState, CommandFrame, VehicleState
-  - DriveMode, SupervisorState enums
-  - MapperConfig, SupervisorConfig
-
-**Deliverable:** `types.h` - Shared data structures
-
-### 1.4 Response Parsing ✓ COMPLETE
-**Why Critical:** Everything depends on bidirectional communication
-
-- [x] Response header parser
-  - Extract and validate all header fields
-  - Telegram ID tracking for request-response pairing
-- [x] Payload extraction framework
-  - Type-safe parsing (uint8, int16_be, uint32_be)
-  - ACK/NACK error code handling
-- [x] Telemetry cache (per-wheel, in WheelConnState_t)
-  - Battery % (STATUS_SOC)
-  - Firmware version (STATUS_SW_VERSION)
-  - Odometer / distance (CRUISE_VALUES, fixed byte offsets to match protocol)
-- [x] Public request API (fire-and-forget, async result via BLE notification)
-  - `bleRequestSOC()`, `bleRequestFirmwareVersion()`, `bleRequestCruiseValues()`
-- [x] Public getter API (returns cached value, -1 if not yet received)
-  - `bleGetBattery()`, `bleGetFirmwareVersion()`, `bleGetDistanceKm()`
-- [x] Cache invalidated on wheel reset/reconnect (no stale data)
-
-Note: Request-response pairing is implicit via service+param ID in notification;
-no explicit queue needed since we are the sole requester and responses are tagged.
-
-**Deliverable:** Complete response parsing in `m25_ble.h` / `m25_ble.cpp`
-**Status:** Implemented 2026-03-06
+- Bidirectional BLE working (dual-wheel, AES-128-CBC encryption, per-wheel)
+- Supervisor state machine with watchdogs, failsafe, auto-reconnect
+- Per-wheel retry budgets with hard BLE state reset on failure
+- Mapper with response curves, ramping, differential drive, speed limits
+- Serial REPL (`help`, `status`, `stop`, `reconnect`, `reset`, `debug <flag>`, `assist`, `config show`)
+- Response parsing: ACK validation, battery %, firmware version, distance/cruise values
+- Supervisor polls telemetry every 10 s (configurable)
+- NVS persistence: MAC addresses, AES keys, assist level. All survive reboot and reflash.
+- Assist level re-synced to wheel on every BLE reconnect
+- `fake_wheel/` simulator for dev without real hardware
 
 ---
 
-## Phase 2: Telemetry & UI
-**Priority:** HIGH | **Dependencies:** Phase 1
+## Phase 1: Core safety ✅
 
-### 2.1 Battery Monitoring ✓ COMPLETE
-**Reference:** `m25_ecs.py` READ_SOC command
-
-- [x] Implement `READ_SOC` command (Service 0x08, Param 0x01) ─ done in 1.4
-- [x] Parse response (1 byte: battery %) ─ done in 1.4
-- [x] Periodic polling ─ `Supervisor::pollTelemetry()`, configurable via `SupervisorConfig::telemetryPollIntervalMs` (default 10 s)
-- [x] Store per-wheel battery state ─ `WheelConnState_t::batteryPct/batteryValid`
-- [x] Low battery warning
-  - [x] Serial output ─ `[Supervisor] LOW BATTERY WARNING: X% (threshold: Y%)`
-  - [ ] LED pattern ─ pending 2.3
-  - [ ] Speed limiting ─ pending mapper integration
-- [x] `VehicleState::lowBattery` flag set when either wheel < `lowBatteryThreshold` (default 20%)
-- [x] `pollTelemetry()` called from `handlePaired()`, `handleArmed()`, `handleDriving()`
-
-**Deliverable:** Real-time battery monitoring
-**Success Criteria:** Accuracy matches Python implementation
-
-### 2.2 Firmware Version
-**Reference:** `m25_ecs.py` READ_SW_VERSION
-
-- [ ] Implement `READ_SW_VERSION` command (Service 0x0A, Param 0x01)
-- [ ] Parse response (4 bytes: dev_state, major, minor, patch)
-- [ ] Display on boot / via serial
-
-**Deliverable:** Firmware version diagnostics
-
-### 2.3 Button-Based UI
-
-- [ ] Assist level cycling (ASSIST button)
-  - LED feedback (blink count)
-  - Buzzer confirmation
-- [ ] Profile selection (HILL_HOLD long-press)
-### 2.4 Settings Persistence
-
-- [ ] EEPROM or SPIFFS storage
-  - Current profile ID
-  - Assist level
-  - User preferences
-- [ ] Load on boot
-- [ ] Save on change
-
-**Deliverable:** Settings survive power cycle
-
-### 2.5 Serial Interface ✓ COMPLETE
-
-- [x] Debugging commands (`help`, `status`, `stop`, `reconnect`, `reset`, `wheels`, `debug <flag>`)
-- [x] Debug flag system (`ble`, `state`, `motor`, `buttons`, `heartbeat` per-flag on/off)
-- [x] Wheel status dump (`blePrintWheelDetails`)
-- [ ] Real-time telemetry output (blocked on 1.4 response parsing)
-- [ ] Wheel simulation mode (test without hardware)
-
-**Deliverable:** Development interface for testing
-**Status:** Core interface implemented; telemetry output pending Phase 1.4
+| Task | Status |
+|---|---|
+| Mapper (curves, deadzone, ramping, differential drive, speed limits) | ✅ `mapper.h/.cpp` |
+| Supervisor state machine (DISCONNECTED -> CONNECTING -> PAIRED -> ARMED -> DRIVING -> FAILSAFE) | ✅ `supervisor.h/.cpp` |
+| Input watchdog + link watchdog + heartbeat keepalive | ✅ |
+| Auto-reconnect with per-wheel retry budgets | ✅ |
+| Shared types (ControlState, CommandFrame, VehicleState, enums) | ✅ `types.h` |
+| Response parsing: ACK/NACK, battery %, firmware version, cruise values | ✅ `m25_ble.h/.cpp` |
+| Unit tests (mapper + supervisor) | ✅ `tests/test_mapper/`, `tests/test_supervisor/` |
 
 ---
 
-## Phase 3: Drive Features
-**Priority:** HIGH | **Dependencies:** Phase 1
+## Phase 2: Telemetry & UI (in progress)
 
-### 3.1 Distance Tracking
-**Reference:** `m25_ecs.py` READ_CRUISE_VALUES
----
+### 2.1 Battery monitoring (partial)
 
-## Phase 3: Cruise Control & Distance Tracking
-**Priority:** HIGH | **Dependencies:** Phase 1 | **Effort:** Medium
+| Item | Status |
+|---|---|
+| `READ_SOC` command + parse (1 byte: battery %) | ✅ done in Phase 1 |
+| Periodic polling in supervisor (`telemetryPollIntervalMs`, default 10 s) | ✅ |
+| Per-wheel battery state (`WheelConnState_t::batteryPct/batteryValid`) | ✅ |
+| `VehicleState::lowBattery` flag (either wheel < threshold) | ✅ |
+| Serial low-battery warning log | ✅ |
+| LED pattern for low battery | ⏳ blocked on 2.3 |
+| Speed limiting on low battery | ⏳ mapper integration pending |
 
-### 3.1 Read Cruise Values (Week 3)
-**Why High Priority:** Essential telemetry for advanced features
+### 2.2 Firmware version ✅
 
-- [ ] Implement `READ_CRUISE_VALUES` command (Service 0x01, Param 0xD1)
-- [ ] Parse response (12+ bytes)
-  - Overall distance (uint32_be, 0.01m units)
-  - Convert to km
-  - Speed, push counter
-- [ ] Periodic polling during operation
-- [ ] Store per-wheel telemetry
-  - Total distance (km)
-  - Trip distance (resettable)
-  - Average speed
+| Item | Status |
+|---|---|
+| `READ_SW_VERSION` command + parse (4 bytes: dev_state, major, minor, patch) | ✅ `bleGetFirmwareVersion()` |
+| Display on boot / via serial | ✅ |
 
-**Deliverable:** Real-time distance tracking
+### 2.3 Button-based UI (partial)
 
-### 3.2 Cruise Control
-**Reference:** `m25_parking.py`
+| Item | Status |
+|---|---|
+| Assist level cycling: NVS persist, re-sync on connect | ✅ `nvs_config.h` |
+| LED blink feedback for assist level | ⏳ |
+| Buzzer confirmation on assist change | ⏳ |
+| Hill-hold toggle (HILL_HOLD long-press) | ⏳ |
+| Profile selection via button | ⏳ |
 
-- [ ] Extend `WRITE_DRIVE_MODE` for cruise bit
-- [ ] Speed setpoint control
-- [ ] Button toggle
-- [ ] Safety checks
+### 2.4 Settings persistence ✅
 
-**Deliverable:** Functional cruise control
+| Item | Status |
+|---|---|
+| NVS: MAC addresses + AES keys | ✅ |
+| NVS: assist level (load on boot, re-sync to wheel on connect) | ✅ `nvs_config.h` |
+| `config show` serial command (reports NVS/env/.h source per field) | ✅ |
 
-### 3.3 Drive Profile Presets
+### 2.5 Serial REPL ✅
 
-- [ ] Use generated `profiles.h` from `tools/generate_profiles.py`
-- [ ] Profile switching via button menu
-- [ ] Store current profile in flash
+| Item | Status |
+|---|---|
+| Core commands (`help`, `status`, `stop`, `reconnect`, `reset`) | ✅ |
+| Debug flag system (per-flag `ble`/`state`/`motor`/`buttons`/`heartbeat`) | ✅ |
+| Wheel status dump (`blePrintWheelDetails`) | ✅ |
+| Assist level commands (`assist`, `setmac`, `setkey`) | ✅ |
 
-**Deliverable:** Profile presets available on device
+### 2.6 NVS: joystick calibration ⏳
 
----
+- Save center X/Y after `joystickRecalibrate()` to NVS; load in `joystickInit()`
+- Same `Preferences` pattern as assist level. Low effort, high value.
+- Calibration is currently lost on reboot
 
-## Phase 4: Advanced Features
-**Priority:** MEDIUM | **Dependencies:** Phases 1-3
+### 2.7 Boot assist level feedback ⏳
 
-### 4.1 WiFi Web Interface
-
-- [ ] ESP32 WebServer setup
-- [ ] Access point mode
-- [ ] Web UI for settings
-  - Profiles
-  - Deadzone/curves
-  - Calibration
-  - Diagnostics
-- [ ] REST API
-- [ ] HTML/JS from PROGMEM
-
-**Deliverable:** Phone/tablet configuration interface
-
-### 4.2 LCD Display Support
-
-- [ ] Display driver integration
-- [ ] Status screen (battery, speed, distance)
-- [ ] Menu system
-- [ ] One-handed navigation
-
-**Deliverable:** Optional display support (when hardware available)
-
-### 4.3 Joystick Calibration
-
-- [ ] Calibration wizard
-- [ ] Store calibration in flash
-- [ ] Auto-calibration on boot option
-
-**Deliverable:** Proper joystick calibration
-
-### 4.4 Data Logging
-
-- [ ] Serial data export
-- [ ] Telemetry logging
-- [ ] Error log storage
-
-**Deliverable:** Debugging and analysis data
-
-### 4.5 OTA Firmware Updates
-
-- [ ] OTA update capability
-- [ ] Version management
-- [ ] Rollback on failure
-
-**Deliverable:** Remote firmware updates
+- Short buzzer sequence on boot: 1 beep = Indoor, 2 = Outdoor, 3 = Learning
+- User always knows active level without reading serial
 
 ---
 
-## Phase 5: Parking Mode
-**Priority:** LOW | **Dependencies:** Phase 1
+## Phase 3: Drive features ⏳
 
-### 5.1 Precision Control Mode
-**Reference:** `m25_parking.py`
+### 3.1 Runtime WHEEL_MODE switching
 
-- [ ] Low-speed override
-- [ ] Fine-grained control
-  - Reduced deadzone
-  - Instant response (minimal ramping)
-- [ ] Incremental movements
-- [ ] Safety: Max 20% speed
-- [ ] Explicit mode entry (button combo)
+- `WHEEL_MODE` is compile-time only (`DUAL/LEFT_ONLY/RIGHT_ONLY`)
+- Serial command `wheels left|right|dual` + NVS persist; no reflash needed for bench testing
 
-**Deliverable:** Precise positioning control
+### 3.2 RSSI-gated arming
 
----
+- Block arming if BLE signal below threshold
+- Warn on signal degradation mid-session
+- Safety-relevant for a wheelchair remote
 
-## Phase 6: Advanced Diagnostics
-**Priority:** LOW | **Dependencies:** Phase 1
+### 3.3 Distance tracking (cruise values)
 
-### 6.1 Drive Profile Management
+- `READ_CRUISE_VALUES` (Service 0x01, Param 0xD1); response parser already in place
+- Route parsed distance/speed to serial and `VehicleState`
+- Trip distance reset
 
-- [ ] Read drive profile (READ_DRIVE_PROFILE)
-- [ ] Read profile parameters (READ_DRIVE_PROFILE_PARAMS)
-- [ ] Write profile selection (WRITE_DRIVE_PROFILE)
-- [ ] Write custom parameters (WRITE_DRIVE_PROFILE_PARAMS)
+### 3.4 Cruise control
 
-**Reference:** `m25_ecs.py`, `m25_ecs_driveprofiles.py`
-**Deliverable:** Full profile customization
+- Extend `WRITE_DRIVE_MODE` for cruise bit
+- Button toggle + safety checks
 
-### 6.2 Memory Management
+### 3.5 Drive profile presets
 
-- [ ] READ_MEMORY commands (Service 0x09)
-- [ ] WRITE_MEMORY commands
-- [ ] Parameter validation
-- [ ] Require developer mode unlock
-
-**Reference:** `m25_protocol_data.py`
-**Deliverable:** Low-level parameter access
-
-### 6.3 Statistics & RTC
-
-- [ ] STATS service (Service 0x0B)
-  - Usage statistics
-  - Runtime hours
-  - Push count
-- [ ] RTC service (Service 0x0E)
-  - Read/write clock
-  - Event timestamps
-
-**Deliverable:** Complete diagnostic dashboard
+- `profiles.h` generated by `tools/generate_profiles.py`, already in repo
+- Profile switching via button menu
+- Store current profile in NVS
 
 ---
 
-## Testing Strategy
+## Phase 4: Enclosure ⏳ (next session)
 
-### Unit Tests
-- Mapper: Response curves, ramping, differential drive
-- Supervisor: State transitions, watchdogs
-- Response parser: All known formats
+Up next: design and source a physical remote enclosure.
 
-### Integration Tests
-- End-to-end command/response cycles
+### Must-haves
+
+| Component | Notes |
+|---|---|
+| ESP32 dev board | Current: generic 38-pin WROOM-32 |
+| Battery | Type TBD (LiPo + TP4056 or 18650) |
+| Analog joystick | Must use ADC1 pins (GPIO 32-39). ADC2 is disabled when BLE radio is active. |
+| Buttons x 2-3 | Buttons have built-in LEDs; LED is the primary feedback channel |
+| Wiring / connectors | |
+
+### Button functions
+
+| Function | Notes |
+|---|---|
+| Power | On/off |
+| Assist level cycle | Double-tap or long-press variants acceptable |
+| Hill-hold toggle | |
+
+3 functions, possibly collapsible to 2 buttons with multi-function. Button count TBD at enclosure session.
+
+### Open questions
+
+- Button count final: 2 or 3?
+- Joystick type: thumb stick vs full joystick?
+- Battery: LiPo + TP4056, or 18650?
+- Mounting: wrist-mount, handlebar clamp, or handheld?
+- Case: 3D-printed custom vs off-the-shelf project box?
+
+---
+
+## Phase 5: Advanced features ⏳
+
+### 5.1 Wheel battery to remote LED
+
+- Telemetry parser already receives battery % from wheels
+- Map to `LED_BATTERY_PIN` patterns; data arrives, just needs routing to UI
+
+### 5.2 Profile upload to wheel
+
+- `profiles.h` has drive profile structs + BLE write infrastructure
+- Last mile: push a profile over BLE
+
+### 5.3 WiFi web interface
+
+- ESP32 access point mode
+- Web UI for settings (profiles, deadzone, calibration, diagnostics)
+- REST API; HTML/JS from PROGMEM
+
+### 5.4 Joystick calibration wizard
+
+- Calibration wizard with NVS storage
+- Auto-calibration on boot option
+
+---
+
+## Phase 6: Parking and diagnostics ⏳ (low priority)
+
+### 6.1 Precision control / parking mode
+
+- Low-speed override (max 20% speed)
+- Reduced deadzone, minimal ramping
+- Explicit entry via button combo
+
+### 6.2 Drive profile management
+
+- Read/write drive profile + parameters (Service 0x06, 0x07)
+- Parameter customization; requires developer mode
+
+### 6.3 Memory and statistics
+
+- `STATS` service (Service 0x0B): runtime hours, push count
+- `RTC` service (Service 0x0E): read/write clock, event timestamps
+- `MEMORY` service (Service 0x09): low-level parameter access
+
+### 6.4 OTA firmware updates
+
+- OTA update via WiFi
+- Version management + rollback on failure
+
+---
+
+## Key files
+
+| File | Role |
+|---|---|
+| `remote_control.ino` | `setup()` / `loop()`, button dispatch, system state machine |
+| `m25_ble.h` / `m25_ble.cpp` | M25 BLE stack (AES-128-CBC, GATT, response parser) |
+| `supervisor.h` / `supervisor.cpp` | State machine, watchdogs, reconnect (**SAFETY-CRITICAL**) |
+| `mapper.h` / `mapper.cpp` | Input to command transformation (**SAFETY-CRITICAL**) |
+| `types.h` | Shared data structures |
+| `device_config.h` | All pin/timing/feature config (compiled fallback) |
+| `nvs_config.h` | NVS persistence (MACs, keys, assist level) |
+| `serial_commands.h` | UART REPL |
+| `joystick.h` | ADC1 oversampling, deadzone, recalibrate |
+| `Logger.h` / `Logger.cpp` | Tag-based logger; `logForced()` bypasses filters for safety events |
+| `fake_wheel/` | Simulated M25 wheel for dev without real hardware |
+| `tests/` | Unit tests: `test_mapper/`, `test_supervisor/` |
+| `tools/` | Code generators (require m5squared Python toolkit) |
+| `archive/` | Experiment graveyard (`wifi_joystick`, `m25_wheel_rfcomm`) |
+
+---
+
+## Testing
+
+### Unit tests (ESP32 hardware required)
+- Mapper: response curves, ramping, differential drive, speed limits
+- Supervisor: state transitions, watchdog timeouts, failsafe triggers
+
+### Integration tests
+- End-to-end BLE command/response cycles with `fake_wheel/`
 - Multi-wheel synchronization
 - Error recovery (connection loss, battery low, NACK)
 
-### Physical Tests (Safety-Critical)
-- Test on actual wheelchair with safety measures
+### Physical tests (safety-critical, requires real M25)
 - Smooth acceleration/deceleration
-- Emergency stop response time (<100ms)
-- Watchdog triggers
+- Emergency stop response time (< 100 ms)
+- Watchdog trigger under real load
+- Assist level sync across power cycles
 
 ---
 
-## Dependencies
+## Status summary
 
-### Hardware
-- ESP32 (ESP32-S3 recommended)
-- M25 wheels with AES keys (from QR codes)
-- Joystick, buttons
-- Optional: LCD display
-
-### Software
-- Arduino IDE or PlatformIO
-- mbedtls (AES encryption)
-- ESP32 BLE libraries
-- Python reference implementation
-
-### Code Generators (Already Implemented)
-- `tools/generate_constants.py` - Protocol constants
-- `tools/generate_profiles.py` - Drive profiles
-- `tools/generate_tests.py` - Test vectors
+| Phase | Priority | State |
+|---|---|---|
+| 1: Core safety | critical | ✅ done |
+| 2: Telemetry & UI | high | in progress |
+| 3: Drive features | high | planned |
+| 4: Enclosure | high | next session |
+| 5: Advanced features | medium | planned |
+| 6: Parking & diagnostics | low | planned |
 
 ---
 
-## Phase Priority Summary
+## Related
 
-| Phase | Priority | Blocking |
-|-------|----------|----------|
-| 1: Core Safety | CRITICAL | Blocks all |
-| 2: Telemetry & UI | HIGH | Standalone operation |
-| 3: Drive Features | HIGH | Advanced functionality |
-| 4: Advanced Features | MEDIUM | Polish |
-| 5: Parking Mode | LOW | Specialized |
-| 6: Diagnostics | LOW | Power users |
-
----
-
-## Related Files
-
-### Python Reference Implementation
-- `m25_protocol.py` - CRC, byte stuffing, encryption
-- `m25_protocol_data.py` - All protocol constants
-- `m25_spp.py` - Packet builder
-- `m25_ecs.py` - Read/write commands, response parsing
-- `m25_parking.py` - Remote control demo
-- `core/mapper.py` - Control algorithms
-- `core/supervisor.py` - State machine + safety
-
-### ESP32 Current Implementation
-- `esp32/arduino/remote_control/m25_ble.h` - BLE client, basic commands
-- `esp32/arduino/remote_control/remote_control.ino` - Main state machine
-- `esp32/arduino/remote_control/joystick.h` - Input handling
-- `esp32/arduino/remote_control/motor_control.h` - Speed commands
-
-### Documentation
-- `doc/m25-protocol.md` - Protocol overview
-- `doc/ble-cross-platform.md` - BLE implementation notes
-- `README.md` - Project overview
-
----
-
-**Document Version:** 1.0
-**Last Updated:** 2026-02-28
-**Status:** Draft - awaiting Phase 1 implementation kickoff
-core/mapper.py` - Control algorithms
-- `core/supervisor.py` - State machine + safety
-- `core/types.py` - Data structures
-- `m25_protocol.py` - CRC, byte stuffing, encryption
-- `m25_protocol_data.py` - Protocol constants
-- `m25_ecs.py` - Command implementation
-- `m25_parking.py` - Remote control demo
-
-### ESP32 Current Implementation
-- `esp32/arduino/remote_control/m25_ble.h` - BLE client, commands
-- `esp32/arduino/remote_control/remote_control.ino` - Main state machine
-- `esp32/arduino/remote_control/joystick.h` - Input handling
-- `esp32/arduino/remote_control/motor_control.h` - Speed commands
-- `esp32/arduino/remote_control/constants.h` - Generated constants
-- `esp32/arduino/remote_control/profiles.h` - Generated profiles
-
-### Code Generators
-- `tools/generate_constants.py`
-- `tools/generate_profiles.py`
-- `tools/generate_tests.py`
-
-### Documentation
-- `esp32/HYBRID_ARCHITECTURE.md` - Architecture overview
-- `doc/m25-protocol.md` - Protocol specification
-- `doc/ble-cross-platform.md` - BLE implementation notes
-
----
-
-**Status:** Code generators complete, ready for Phase 1 implementation
+- Upstream Python toolkit: [codeberg.org/roll2own/m5squared](https://codeberg.org/roll2own/m5squared)
+- Protocol docs: `doc/m25-protocol.md`, `doc/ble-cross-platform.md`
+- Generated files: `constants.h`, `profiles.h` (committed; build works without running generators)
