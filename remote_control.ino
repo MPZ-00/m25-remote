@@ -345,16 +345,11 @@ void loop() {
 
     SupervisorState supState = supervisor.getState();
 
-    const char* stateName = (sysState == STATE_BOOT) ? "BOOT" :
-        (sysState == STATE_CONNECTING) ? "CONNECTING" :
-        (sysState == STATE_READY) ? "READY" :
-        (sysState == STATE_OPERATING) ? "OPERATING" :
-        (sysState == STATE_ERROR) ? "ERROR" :
-        (sysState == STATE_OFF) ? "OFF" : "?";
+    const char* supStateName = supervisorStateToString(supState);
 
     if (now - lastHeartbeatMs >= 5000) {
         lastHeartbeatMs = now;
-        LOG_DEBUG(TAG_SUPERVISOR, "loop heartbeat count=%u state=%s", loopCounter, stateName);
+        LOG_DEBUG(TAG_SUPERVISOR, "loop heartbeat count=%u state=%s", loopCounter, supStateName);
     }
 
     serialTick(_serialCtx);
@@ -379,16 +374,16 @@ void loop() {
     bool powerPressed = btnPower.wasPressed();
 
     if (estopPressed) {
-        LOG_DEBUG(TAG_BUTTON, "E-STOP pressed (state=%s)", stateName);
+        LOG_DEBUG(TAG_BUTTON, "E-STOP pressed (state=%s)", supStateName);
     }
     if (hillHoldPressed) {
-        LOG_DEBUG(TAG_BUTTON, "HILL-HOLD pressed (state=%s)", stateName);
+        LOG_DEBUG(TAG_BUTTON, "HILL-HOLD pressed (state=%s)", supStateName);
     }
     if (assistPressed) {
-        LOG_DEBUG(TAG_BUTTON, "ASSIST pressed (state=%s)", stateName);
+        LOG_DEBUG(TAG_BUTTON, "ASSIST pressed (state=%s)", supStateName);
     }
     if (powerPressed) {
-        LOG_DEBUG(TAG_BUTTON, "POWER pressed (state=%s)", stateName);
+        LOG_DEBUG(TAG_BUTTON, "POWER pressed (state=%s)", supStateName);
     }
 
     if (powerPressed && sysState != STATE_BOOT) {

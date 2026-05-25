@@ -469,6 +469,10 @@ void bleResetTxStats();
 void bleSetMac(int idx, const char* mac);
 void bleSetKey(int idx, const uint8_t* newKey);
 
+// Read back the currently configured MAC (buf must be >= 18 bytes).
+// Returns false if idx is invalid; buf is filled with the MAC string.
+bool bleGetMac(int idx, char* buf, size_t bufLen);
+
 // Verbose per-wheel status dump (called by serial 'wheels' command)
 void blePrintWheelDetails();
 

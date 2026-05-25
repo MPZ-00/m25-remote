@@ -784,9 +784,15 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _activateHoldStartMs = 0;
         _idleHoldStartMs = 0;
         _armedEntryMs = millis();
-        _lastArmedKeepaliveMs = 0;         // fire first keep-alive immediately
+        _lastArmedKeepaliveMs = millis();  // keep-alive fires after one interval, not immediately
         _deadzoneStopLatched = false;
         _driveSessionActive = true;        // suppress telemetry until explicit disarm
+        // Force sequence: queue motion(0,0) so the motor task sends DRIVE_MODE(0x06).
+        // The first keep-alive stop (80 ms later) follows with DRIVE_MODE(0x04),
+        // completing the 0x06->0x04 latch the M25 wheel requires for remote mode.
+        if (bleAnyConnected()) {
+            bleSendMotorCommand(0.0f, 0.0f);
+        }
     }
 
     // On entry to DRIVING: reset per-wheel notify timestamps so the stale-notify

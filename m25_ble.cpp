@@ -2663,6 +2663,13 @@ void bleSetMac(int idx, const char* mac) {
         w.name ? w.name : "Unknown", w.mac);
 }
 
+bool bleGetMac(int idx, char* buf, size_t bufLen) {
+    if (idx < 0 || idx >= WHEEL_COUNT || !buf || bufLen < 18) return false;
+    strncpy(buf, _wheels[idx].mac, bufLen - 1);
+    buf[bufLen - 1] = '\0';
+    return true;
+}
+
 void bleSetKey(int idx, const uint8_t* newKey) {
     if (idx < 0 || idx >= WHEEL_COUNT) return;
     if (!_wheelActive(idx)) {

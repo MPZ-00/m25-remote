@@ -303,9 +303,11 @@ static void _scPrintStatus(const SerialContext& ctx) {
     {
         auto printWheel = [](const char* label, int idx, bool conn) {
             char line[192];
-            snprintf(line, sizeof(line), "[Wheel %s]", label);
+            char mac[18] = "??:??:??:??:??:??";
+            bleGetMac(idx, mac, sizeof(mac));
+            snprintf(line, sizeof(line), "[Wheel %s]  %s", label, mac);
             if (!conn) {
-                strlcat(line, "  not connected", sizeof(line));
+                strlcat(line, "  (not connected)", sizeof(line));
                 _scCmdOut(line);
                 return;
             }
@@ -1136,16 +1138,44 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         const char* arg = cmd + 6;
         while (*arg == ' ') arg++;
         if (strcmp(arg, "show") == 0 || *arg == '\0') {
-            nvsPrintAll();
-            _scCmdOutf("[Config] Profile availability: env=%s, default=YES",
-                _scProfileEnvAvailable ? "YES" : "no");
-            _scCmdOutf("[Config] Build default MACs: left=%s right=%s",
-                _scProfileDefaultLeftMac, _scProfileDefaultRightMac);
-            if (_scProfileEnvAvailable) {
-                _scCmdOutf("[Config] Env profile MACs  : left=%s right=%s",
-                    _scProfileEnvLeftMac, _scProfileEnvRightMac);
+            // Read NVS values (returns false + zeros if not set)
+            char    nvsLmac[18] = {0}, nvsRmac[18] = {0};
+            uint8_t nvsLkey[16] = {0}, nvsRkey[16] = {0};
+            uint8_t nvsAssist = 0;
+            bool lmacNvs   = nvsLoadMac(WHEEL_LEFT,  nvsLmac, sizeof(nvsLmac));
+            bool rmacNvs   = nvsLoadMac(WHEEL_RIGHT, nvsRmac, sizeof(nvsRmac));
+            bool lkeyNvs   = nvsLoadKey(WHEEL_LEFT,  nvsLkey);
+            bool rkeyNvs   = nvsLoadKey(WHEEL_RIGHT, nvsRkey);
+            bool assistNvs = nvsLoadAssistLevel(&nvsAssist);
+
+            // Resolve active value per setting: NVS > env > default
+            const char*    activeLmac  = lmacNvs  ? nvsLmac  : (_scProfileEnvAvailable ? _scProfileEnvLeftMac   : _scProfileDefaultLeftMac);
+            const char*    activeRmac  = rmacNvs  ? nvsRmac  : (_scProfileEnvAvailable ? _scProfileEnvRightMac  : _scProfileDefaultRightMac);
+            const uint8_t* activeLkey  = lkeyNvs  ? nvsLkey  : (_scProfileEnvAvailable ? _scProfileEnvLeftKey   : _scProfileDefaultLeftKey);
+            const uint8_t* activeRkey  = rkeyNvs  ? nvsRkey  : (_scProfileEnvAvailable ? _scProfileEnvRightKey  : _scProfileDefaultRightKey);
+            uint8_t        activeAssist = assistNvs ? nvsAssist : (ctx.assistLevel ? *ctx.assistLevel : 0);
+
+            const char* lmacSrc   = lmacNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
+            const char* rmacSrc   = rmacNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
+            const char* lkeySrc   = lkeyNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
+            const char* rkeySrc   = rkeyNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
+            const char* assistSrc = assistNvs ? "NVS" : "default";
+
+            char lkeyHex[33] = {0}, rkeyHex[33] = {0};
+            for (int i = 0; i < 16; i++) {
+                snprintf(&lkeyHex[i * 2], 3, "%02x", activeLkey[i]);
+                snprintf(&rkeyHex[i * 2], 3, "%02x", activeRkey[i]);
             }
-            _scCmdOut("[Config] Switch profile: 'config profile default' or 'config profile env'");
+            const char* assistName = (activeAssist < ASSIST_COUNT) ? assistConfigs[activeAssist].name : "?";
+
+            _scCmdOut("[Config] --- Active Profile ---");
+            _scCmdOutf("[Config] Left  MAC  : %-17s  [%s]", activeLmac,  lmacSrc);
+            _scCmdOutf("[Config] Right MAC  : %-17s  [%s]", activeRmac,  rmacSrc);
+            _scCmdOutf("[Config] Left  Key  : %s  [%s]", lkeyHex, lkeySrc);
+            _scCmdOutf("[Config] Right Key  : %s  [%s]", rkeyHex, rkeySrc);
+            _scCmdOutf("[Config] Assist     : %s (%u)  [%s]", assistName, activeAssist, assistSrc);
+            _scCmdOutf("[Config] Profiles   : env=%s  default=YES  (switch: 'config profile <env|default>')",
+                _scProfileEnvAvailable ? "YES" : "no");
         }
         else if (strncmp(arg, "profile ", 8) == 0) {
             const char* profile = arg + 8;
