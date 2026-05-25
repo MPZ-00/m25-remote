@@ -30,6 +30,7 @@ Supervisor::Supervisor(Mapper& mapper, const SupervisorConfig& config)
     , _activateHoldStartMs(0)
     , _idleHoldStartMs(0)
     , _armedEntryMs(0)
+    , _lastArmedKeepaliveMs(0)
     , _driveEntryMs(0)
     , _reconnectNotBeforeMs(0)
     , _reconnectReqCooldownUntilMs(0)
@@ -545,6 +546,14 @@ void Supervisor::handleArmed() {
         _triggerPartialReconnect();
         return;
     }
+
+    // Keep-alive: periodic zero-speed to maintain the wheel's remote-mode watchdog.
+    uint32_t now = millis();
+    if (bleAnyConnected() && (now - _lastArmedKeepaliveMs >= ARMED_KEEPALIVE_INTERVAL_MS)) {
+        _lastArmedKeepaliveMs = now;
+        sendStop();
+    }
+
     // No telemetry polling here: bleRequest*() calls _sendCommand() on Core 1
     // while the motor task (_bleMotorTask) may be writing on Core 0.  Even with
     // the mutex, isConnected() inside the stack can deadlock when rc=-1 fires.
@@ -775,6 +784,7 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _activateHoldStartMs = 0;
         _idleHoldStartMs = 0;
         _armedEntryMs = millis();
+        _lastArmedKeepaliveMs = 0;         // fire first keep-alive immediately
         _deadzoneStopLatched = false;
         _driveSessionActive = true;        // suppress telemetry until explicit disarm
     }

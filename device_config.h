@@ -196,6 +196,11 @@
 #define JS_ACTIVATE_HOLD_MS   100   // deadzone -> OPERATING  (must push for 100 ms)
 #define JS_IDLE_HOLD_MS       300   // OPERATING -> deadzone -> READY (must center for 300 ms)
 
+// ARMED state remote-mode keep-alive interval (ms).
+// M25 exits remote mode if no REMOTE_SPEED arrives for ~200-500 ms; 80 ms gives
+// adequate margin while the joystick is centred.
+#define ARMED_KEEPALIVE_INTERVAL_MS  80
+
 // Blink periods
 #define BLINK_SLOW_MS         1000  // 1 Hz  (slow blink, e.g. learning mode)
 #define BLINK_FAST_MS         500   // 2 Hz  (fast blink, e.g. error / low bat)

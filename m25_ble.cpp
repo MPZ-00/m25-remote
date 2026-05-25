@@ -285,12 +285,12 @@ static const char* _bleErrStr(int rc) {
     case 0x0A:   return "ESP_GATT_INVALID_OFFSET";
     case 0x0D:   return "ESP_GATT_INVALID_ATTR_LEN";
     case 0x13:   return "ESP_GATT_UNKNOWN (19) - no descriptors (benign on first connect)";
-    case 0x85:   return "ESP_GATT_ERROR (133) - not connectable / controller busy";
+    case 0x85:   return "ESP_GATT_ERROR - not advertising or BLE controller busy";
     case 0x8D:   return "ESP_GATT_BUSY";
     case 0x8E:   return "ESP_GATT_ERROR (generic)";
     case 0x8F:   return "ESP_GATT_CMD_STARTED";
     case 0x96:   return "ESP_GATT_AUTH_FAIL";
-    case 0xFF:   return "connect scan timeout (255) - wheel not advertising or out of range";
+    case 0xFF:   return "scan timeout - wheel off, out of range, or not advertising";
     default: {
         static char buf[24];
         snprintf(buf, sizeof(buf), "0x%X (%d)", rc, rc);
@@ -1603,14 +1603,17 @@ bool _connectWheel(int idx) {
         (int)bdStatus,
         w.consecutiveFails);
     if (!w.client->connect(BLEAddress(w.mac))) {
-        // Library logs status code above; "Unknown ESP_ERR" means GATT status (not in esp_err_to_name).
-        // status=133 = ESP_GATT_ERROR (not connectable / busy); see _bleErrStr() for others.
-        LOG_ERROR(TAG_BLE, "%s wheel: GATT connect FAILED (ctl=%s/%d, bd=%s/%d)",
+        // The BLE library logged "status=N Unknown ESP_ERR error" on the line above.
+        // esp_err_to_name() does not cover esp_gatt_status_t, so every GATT code
+        // appears as "Unknown ESP_ERR error".  The two codes seen when no device is
+        // present are decoded below so you can match them to that log line.
+        LOG_ERROR(TAG_BLE, "%s wheel: GATT connect failed attempt %u/%u (ctl=%s, bd=%s)",
             wheelName,
+            (unsigned)(w.consecutiveFails + 1), (unsigned)BLE_MAX_RECONNECT_FAILS,
             _btControllerStatusStr(ctlStatus),
-            (int)ctlStatus,
-            _bluedroidStatusStr(bdStatus),
-            (int)bdStatus);
+            _bluedroidStatusStr(bdStatus));
+        LOG_ERROR(TAG_BLE, "  status 133/0x85 = %s", _bleErrStr(0x85));
+        LOG_ERROR(TAG_BLE, "  status 255/0xFF = %s", _bleErrStr(0xFF));
         w.consecutiveFails++;
         return false;
     }
