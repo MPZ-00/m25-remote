@@ -57,6 +57,12 @@ struct JoystickNorm {
 // ---------------------------------------------------------------------------
 static int _jsXCenter = JOYSTICK_CENTER;
 static int _jsYCenter = JOYSTICK_CENTER;
+// Full-range calibration endpoints. Default to theoretical ADC range.
+// Updated by joystickApplyFullRangeCalibration() after NVS load or 'cal full'.
+static int _jsXMin = JOYSTICK_ADC_MIN;
+static int _jsXMax = JOYSTICK_ADC_MAX;
+static int _jsYMin = JOYSTICK_ADC_MIN;
+static int _jsYMax = JOYSTICK_ADC_MAX;
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -147,34 +153,34 @@ inline JoystickRaw joystickReadRaw() {
 }
 
 // ---------------------------------------------------------------------------
-// Normalize one axis to [-1.0, +1.0], applying deadzone
+// Normalize one axis to [-1.0, +1.0] using measured range endpoints.
+// adcMin/adcMax are the actual min/max observed during full-range calibration
+// (or the theoretical 0/4095 before calibration is done).
 // Returns 0.0 if within deadzone.
 // ---------------------------------------------------------------------------
-inline float joystickNormalizeAxis(int raw, int center) {
+inline float joystickNormalizeAxis(int raw, int center, int adcMin, int adcMax) {
     int offset = raw - center;
 
     if (abs(offset) <= JOYSTICK_DEADZONE) {
         return 0.0f;
     }
 
-    // Remap outside deadzone to full [-1, +1] range
+    // Remap outside deadzone to full [-1, +1] using measured endpoints.
     float usable;
     if (offset > 0) {
-        // Positive side: deadzone edge to ADC_MAX
         int edgePos = center + JOYSTICK_DEADZONE;
-        int rangePos = JOYSTICK_ADC_MAX - edgePos;
+        int rangePos = adcMax - edgePos;
         if (rangePos <= 0) return 1.0f;
         usable = (float)(raw - edgePos) / (float)rangePos;
     }
     else {
-        // Negative side: ADC_MIN to deadzone edge
         int edgeNeg = center - JOYSTICK_DEADZONE;
-        int rangeNeg = edgeNeg - JOYSTICK_ADC_MIN;
+        int rangeNeg = edgeNeg - adcMin;
         if (rangeNeg <= 0) return -1.0f;
         usable = -((float)(edgeNeg - raw) / (float)rangeNeg);
     }
 
-    // Clamp to [-1, +1] to guard against ADC noise at extremes
+    // Clamp to [-1, +1] to guard against ADC noise at extremes.
     if (usable > 1.0f) usable = 1.0f;
     if (usable < -1.0f) usable = -1.0f;
     return usable;
@@ -206,14 +212,72 @@ inline const char* joystickDirectionLabel(float x, float y) {
 }
 
 // ---------------------------------------------------------------------------
+// Apply a previously computed full-range calibration (e.g. loaded from NVS).
+// Call after joystickInit(); values outside the valid ADC range are ignored.
+// ---------------------------------------------------------------------------
+inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int yMax) {
+    // Sanity: each range must contain the center with room for the deadzone.
+    bool xOk = (xMin < _jsXCenter - JOYSTICK_DEADZONE) && (xMax > _jsXCenter + JOYSTICK_DEADZONE);
+    bool yOk = (yMin < _jsYCenter - JOYSTICK_DEADZONE) && (yMax > _jsYCenter + JOYSTICK_DEADZONE);
+    if (!xOk || !yOk) {
+        Logger::instance().logForced(LogLevel::WARN, TAG_JOYSTICK, __FILE__, __LINE__,
+            "Full-range cal rejected (bad range): X=%d..%d Y=%d..%d centers=(%d,%d)",
+            xMin, xMax, yMin, yMax, _jsXCenter, _jsYCenter);
+        return;
+    }
+    _jsXMin = xMin; _jsXMax = xMax;
+    _jsYMin = yMin; _jsYMax = yMax;
+    Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
+        "Full-range cal applied: X=%d..%d Y=%d..%d", xMin, xMax, yMin, yMax);
+}
+
+// ---------------------------------------------------------------------------
+// Full-range calibration: block for durationMs, sampling the joystick while
+// the user moves it to all corners.  Then apply and store results via output
+// params (caller responsible for NVS persistence if desired).
+// Must not be called while driving (the main loop is blocked during sampling).
+// ---------------------------------------------------------------------------
+inline void joystickCalibrateFullRange(unsigned long durationMs,
+                                       int* outXMin, int* outXMax,
+                                       int* outYMin, int* outYMax) {
+    int xMin = _jsXCenter, xMax = _jsXCenter;
+    int yMin = _jsYCenter, yMax = _jsYCenter;
+
+    unsigned long end = millis() + durationMs;
+    unsigned long nextTick = millis() + 1000;
+    int remaining = (int)(durationMs / 1000);
+
+    while (millis() < end) {
+        int x = joystickReadRawAxis(JOYSTICK_X_PIN);
+        int y = joystickReadRawAxis(JOYSTICK_Y_PIN);
+        if (x < xMin) xMin = x;
+        if (x > xMax) xMax = x;
+        if (y < yMin) yMin = y;
+        if (y > yMax) yMax = y;
+        if (millis() >= nextTick) {
+            Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
+                "  %ds  X=%d..%d  Y=%d..%d", remaining--, xMin, xMax, yMin, yMax);
+            nextTick += 1000;
+        }
+        delay(10);
+    }
+
+    joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+    if (outXMin) *outXMin = _jsXMin;
+    if (outXMax) *outXMax = _jsXMax;
+    if (outYMin) *outYMin = _jsYMin;
+    if (outYMax) *outYMax = _jsYMax;
+}
+
+// ---------------------------------------------------------------------------
 // Main read function - returns normalized joystick state
 // ---------------------------------------------------------------------------
 inline JoystickNorm joystickRead() {
     JoystickRaw raw = joystickReadRaw();
 
     JoystickNorm n;
-    n.x = joystickNormalizeAxis(raw.x, _jsXCenter);
-    n.y = joystickNormalizeAxis(raw.y, _jsYCenter);
+    n.x = joystickNormalizeAxis(raw.x, _jsXCenter, _jsXMin, _jsXMax);
+    n.y = joystickNormalizeAxis(raw.y, _jsYCenter, _jsYMin, _jsYMax);
     n.inDeadzone = (n.x == 0.0f && n.y == 0.0f);
     return n;
 }

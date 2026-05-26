@@ -21,6 +21,7 @@
  *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning  (persisted to NVS)
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
  *   recal                       Recalibrate joystick center position
+ *   cal full [s]                Full-range joystick calibration (wiggle to all corners, default 5 s)
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
  *   disarm                      Disarm motors (ARMED/DRIVING -> PAIRED, safe stop first)
  *   stop                        Software emergency stop (enters FAILSAFE state)
@@ -223,7 +224,8 @@ static void _scPrintHelp() {
     _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning  (persisted)");
     _scCmdOut("  speed <0-100>             Set normal-mode max speed % (persisted)  100=full wheel speed");
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
-    _scCmdOut("  recal                     Recalibrate joystick center");
+    _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
+    _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  disarm                    Disarm motors (ARMED/DRIVING -> PAIRED)");
     _scCmdOut("  stop                      Software emergency stop (-> FAILSAFE)");
@@ -420,12 +422,17 @@ static void _scPrintJs() {
     // which could sample different ADC values and produce misleading log output.
     JoystickRaw  raw = joystickReadRaw();
     JoystickNorm n;
-    n.x = joystickNormalizeAxis(raw.x, _jsXCenter);
-    n.y = joystickNormalizeAxis(raw.y, _jsYCenter);
+    n.x = joystickNormalizeAxis(raw.x, _jsXCenter, _jsXMin, _jsXMax);
+    n.y = joystickNormalizeAxis(raw.y, _jsYCenter, _jsYMin, _jsYMax);
     n.inDeadzone = (n.x == 0.0f && n.y == 0.0f);
     const char* dir = joystickDirectionLabel(n.x, n.y);
     _scCmdOutf("[JS] raw X=%-5d Y=%-5d  ctr X=%-5d Y=%-5d  norm X=%+.3f Y=%+.3f  dz=%s  dir=%s",
         raw.x, raw.y, _jsXCenter, _jsYCenter, n.x, n.y, n.inDeadzone ? "yes" : "no", dir);
+    _scCmdOutf("[JS] range X=%d..%d  Y=%d..%d  %s",
+        _jsXMin, _jsXMax, _jsYMin, _jsYMax,
+        (_jsXMax == JOYSTICK_ADC_MAX && _jsYMax == JOYSTICK_ADC_MAX)
+            ? "(theoretical - run 'cal full' to calibrate)"
+            : "(measured)");
 }
 
 static void _scPrintWheels() {
@@ -827,6 +834,28 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         }
         _scCmdOut("Recalibrating joystick center - keep joystick at rest...");
         ctx.fnRecalibrate();
+        return;
+    }
+
+    // cal full [seconds]
+    if (strcmp(cmd, "cal full") == 0 || strncmp(cmd, "cal full ", 9) == 0) {
+        if (*ctx.state == STATE_OPERATING) {
+            _scCmdOut("cal full: disarm first (cannot calibrate while driving)");
+            return;
+        }
+        unsigned long secs = 5;
+        if (strncmp(cmd, "cal full ", 9) == 0) {
+            int v = atoi(cmd + 9);
+            if (v >= 2 && v <= 30) secs = (unsigned long)v;
+        }
+        _scCmdOutf("[Cal] Full-range joystick calibration: %lus - move stick to ALL corners now!", secs);
+        _scCmdOut("[Cal] (UP, DOWN, LEFT, RIGHT, and all diagonals)");
+        int xMin, xMax, yMin, yMax;
+        joystickCalibrateFullRange(secs * 1000UL, &xMin, &xMax, &yMin, &yMax);
+        bool saved = nvsSaveJsRange(xMin, xMax, yMin, yMax);
+        _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
+            xMin, xMax, yMin, yMax,
+            saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
         return;
     }
 

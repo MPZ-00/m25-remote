@@ -331,6 +331,18 @@ void setup() {
         }
     }
 
+    // Load persisted joystick full-range calibration.
+    // Without this, theoretical ADC min/max (0/4095) are used and most joysticks
+    // will never reach 1.0 normalized, capping effective speed.
+    {
+        int xMin, xMax, yMin, yMax;
+        if (nvsLoadJsRange(&xMin, &xMax, &yMin, &yMax)) {
+            joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+        } else {
+            LOG_INFO(TAG_BOOT, "No joystick range cal in NVS - run 'cal full' to calibrate");
+        }
+    }
+
     ledSetAssistLevel(assistLevel);
     ledSetHillHold(hillHoldOn);
 

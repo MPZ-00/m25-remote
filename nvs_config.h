@@ -213,6 +213,34 @@ inline bool nvsLoadMaxSpeed(uint8_t* pct) {
 }
 
 // ---------------------------------------------------------------------------
+// Joystick full-range calibration (actual ADC min/max per axis, 12-bit: 0-4095).
+// Stored as four int16 values packed into two Bytes blobs to save NVS space.
+// ---------------------------------------------------------------------------
+inline bool nvsSaveJsRange(int xMin, int xMax, int yMin, int yMax) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    int16_t buf[4] = { (int16_t)xMin, (int16_t)xMax, (int16_t)yMin, (int16_t)yMax };
+    bool ok = (p.putBytes("js_range", buf, sizeof(buf)) == sizeof(buf));
+    p.end();
+    return ok;
+}
+
+// Fills *xMin..*yMax.  Returns true if NVS had a valid entry.
+inline bool nvsLoadJsRange(int* xMin, int* xMax, int* yMin, int* yMax) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    int16_t buf[4] = { 0, 4095, 0, 4095 };
+    bool ok = (p.getBytes("js_range", buf, sizeof(buf)) == sizeof(buf));
+    p.end();
+    if (!ok) return false;
+    if (xMin) *xMin = buf[0];
+    if (xMax) *xMax = buf[1];
+    if (yMin) *yMin = buf[2];
+    if (yMax) *yMax = buf[3];
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Print current effective config to Serial, noting NVS vs compiled default.
 // ---------------------------------------------------------------------------
 inline void nvsPrintAll() {
