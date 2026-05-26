@@ -2338,9 +2338,13 @@ static void _bleMotorTask(void* /*pv*/) {
             if (!bleIsConnected(i)) continue;
 
             WheelConnState_t& w = _wheels[i];
+            // Stop: clear CRUISE so wheel reverts to REMOTE-only mode.
+            // Drive: target REMOTE-only (0x04). CRUISE (0x06) is only used during the
+            // arm/latch handshake; writing it mid-session can disrupt the wheel's state
+            // machine and prevent speed commands from taking effect.
             uint8_t targetDriveMode = cmd.isStop
                 ? (uint8_t)((w.driveModeBits | M25_DRIVE_MODE_REMOTE) & (uint8_t)~M25_DRIVE_MODE_CRUISE)
-                : (uint8_t)(w.driveModeBits | M25_DRIVE_MODE_REMOTE | M25_DRIVE_MODE_CRUISE);
+                : (uint8_t)(w.driveModeBits | M25_DRIVE_MODE_REMOTE);
 
             if (!cmd.isStop) {
                 bool modeOk = _writeDriveModeIfNeeded(i, targetDriveMode);
@@ -2473,13 +2477,11 @@ bool bleSendMotorCommand(float leftPercent, float rightPercent) {
         xQueueOverwrite(_motorQueue, &c);
         return true;
     }
-    // Fallback
+    // Fallback (motor task not yet running during protocol init)
     bool ok = true;
     for (int i = 0; i < WHEEL_COUNT; i++) {
         if (!bleIsConnected(i)) continue;
-        uint8_t targetDriveMode = (uint8_t)(_wheels[i].driveModeBits |
-            M25_DRIVE_MODE_REMOTE |
-            M25_DRIVE_MODE_CRUISE);
+        uint8_t targetDriveMode = (uint8_t)(_wheels[i].driveModeBits | M25_DRIVE_MODE_REMOTE);
         bool modeOk = _writeDriveModeIfNeeded(i, targetDriveMode);
         ok &= modeOk;
         if (!modeOk) {
@@ -2766,16 +2768,21 @@ float bleGetDistanceKm(int idx) {
 }
 
 void blePrintWheelDetails() {
-    LOG_INFO(TAG_BLE, "Wheel mode    : %s", WHEEL_MODE_NAME);
+    // logForced bypasses the TAG_BLE runtime filter so 'wheels' command output
+    // always appears regardless of whether the ble log tag is enabled.
+    Logger& log = Logger::instance();
+#define _WD_LOG(fmt, ...) log.logForced(LogLevel::INFO, TAG_BLE, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+
+    _WD_LOG("Wheel mode    : %s", WHEEL_MODE_NAME);
     for (int i = 0; i < WHEEL_COUNT; i++) {
         WheelConnState_t& w = _wheels[i];
         if (!_wheelActive(i)) {
-            LOG_INFO(TAG_BLE, "[Wheel %s] INACTIVE (WHEEL_MODE = %s)",
+            _WD_LOG("[Wheel %s] INACTIVE (WHEEL_MODE = %s)",
                 w.name ? w.name : "?", WHEEL_MODE_NAME);
             continue;
         }
-        LOG_INFO(TAG_BLE, "[Wheel %s]", w.name ? w.name : "?");
-        LOG_INFO(TAG_BLE, "  MAC          : %s", w.mac);
+        _WD_LOG("[Wheel %s]", w.name ? w.name : "?");
+        _WD_LOG("  MAC          : %s", w.mac);
 
         char keyHex[3 * 16];
         size_t off = 0;
@@ -2783,34 +2790,39 @@ void blePrintWheelDetails() {
             off += (size_t)snprintf(keyHex + off, sizeof(keyHex) - off,
                 (b < 15) ? "%02X " : "%02X", w.key[b]);
         }
-        LOG_INFO(TAG_BLE, "  Key (hex)    : %s", keyHex);
+        _WD_LOG("  Key (hex)    : %s", keyHex);
 
-        LOG_INFO(TAG_BLE, "  connected    : %s", w.connected ? "yes" : "no");
-        LOG_INFO(TAG_BLE, "  protocolRdy  : %s", w.protocolReady ? "yes" : "no");
-        LOG_INFO(TAG_BLE, "  failCount    : %u / %u", (unsigned)w.consecutiveFails,
+        _WD_LOG("  connected    : %s", w.connected ? "yes" : "no");
+        _WD_LOG("  protocolRdy  : %s", w.protocolReady ? "yes" : "no");
+        _WD_LOG("  failCount    : %u / %u", (unsigned)w.consecutiveFails,
             (unsigned)BLE_MAX_RECONNECT_FAILS);
-        LOG_INFO(TAG_BLE, "  txFailStreak : %u", (unsigned)w.txFailStreak);
-        LOG_INFO(TAG_BLE, "  driveMode    : 0x%02X", w.driveModeBits);
-        LOG_INFO(TAG_BLE, "  telegramId   : %u", (unsigned)w.telegramId);
+        _WD_LOG("  txFailStreak : %u", (unsigned)w.txFailStreak);
+        _WD_LOG("  driveMode    : 0x%02X  remote=%u cruise=%u auto_hold=%u",
+            w.driveModeBits,
+            (w.driveModeBits & M25_DRIVE_MODE_REMOTE)   ? 1u : 0u,
+            (w.driveModeBits & M25_DRIVE_MODE_CRUISE)   ? 1u : 0u,
+            (w.driveModeBits & M25_DRIVE_MODE_AUTO_HOLD)? 1u : 0u);
+        _WD_LOG("  telegramId   : %u", (unsigned)w.telegramId);
         // Cached telemetry
         if (w.batteryValid) {
-            LOG_INFO(TAG_BLE, "  battery      : %d%%", (int)w.batteryPct);
+            _WD_LOG("  battery      : %d%%", (int)w.batteryPct);
         }
         else {
-            LOG_INFO(TAG_BLE, "  battery      : (not yet received)");
+            _WD_LOG("  battery      : (not yet received)");
         }
         if (w.fwValid) {
-            LOG_INFO(TAG_BLE, "  firmware     : %d.%d.%d", w.fwMajor, w.fwMinor, w.fwPatch);
+            _WD_LOG("  firmware     : %d.%d.%d", w.fwMajor, w.fwMinor, w.fwPatch);
         }
         else {
-            LOG_INFO(TAG_BLE, "  firmware     : (not yet received)");
+            _WD_LOG("  firmware     : (not yet received)");
         }
         if (w.distanceValid) {
-            LOG_INFO(TAG_BLE, "  distance     : %.3f km", w.distanceKm);
+            _WD_LOG("  distance     : %.3f km", w.distanceKm);
         }
         else {
-            LOG_INFO(TAG_BLE, "  distance     : (not yet received)");
+            _WD_LOG("  distance     : (not yet received)");
         }
     }
-    LOG_INFO(TAG_BLE, "autoReconnect: %s", _bleAutoReconnect ? "ON" : "off");
+    _WD_LOG("autoReconnect: %s", _bleAutoReconnect ? "ON" : "off");
+#undef _WD_LOG
 }

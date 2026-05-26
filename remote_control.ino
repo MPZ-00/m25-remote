@@ -263,6 +263,7 @@ static SerialContext _serialCtx = {
     &assistLevel,
     &hillHoldOn,
     &supervisor,
+    &mapperConfig,
     enterOff,
     joystickRecalibrate,
 #ifdef ENABLE_BATTERY_MONITOR
@@ -320,6 +321,15 @@ void setup() {
 
     // Load persisted assist level (falls back to ASSIST_INDOOR if not set).
     nvsLoadAssistLevel(&assistLevel);
+
+    // Load persisted max-speed override (only applied if NVS has a value).
+    {
+        uint8_t savedSpeed = 0;
+        if (nvsLoadMaxSpeed(&savedSpeed)) {
+            mapperConfig.maxSpeedNormal = savedSpeed;
+            LOG_INFO(TAG_BOOT, "Max speed (normal) loaded from NVS: %u%%", savedSpeed);
+        }
+    }
 
     ledSetAssistLevel(assistLevel);
     ledSetHillHold(hillHoldOn);

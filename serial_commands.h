@@ -152,6 +152,7 @@ struct SerialContext {
     uint8_t* assistLevel;
     bool* hillHoldOn;
     Supervisor* supervisor;
+    MapperConfig* mapperCfg;       // for speed limit read/write
     void (*fnEnterOff)();
     void (*fnRecalibrate)();
 #ifdef ENABLE_BATTERY_MONITOR
@@ -220,6 +221,7 @@ static void _scPrintHelp() {
     _scCmdOut("  setkey <left|right> <hex> Change AES key (32 hex chars)");
     _scCmdOut("--- Control ---");
     _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning  (persisted)");
+    _scCmdOut("  speed <0-100>             Set normal-mode max speed % (persisted)  100=full wheel speed");
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
     _scCmdOut("  recal                     Recalibrate joystick center");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
@@ -358,10 +360,16 @@ static void _scPrintStatus(const SerialContext& ctx) {
         }
     }
 
-    // --- Assist / hill hold ---
+    // --- Assist / hill hold / speed ---
     _scCmdOutf("[Assist]   %s  HillHold=%s",
         assistConfigs[*ctx.assistLevel].name,
         *ctx.hillHoldOn ? "ON" : "off");
+    if (ctx.mapperCfg) {
+        _scCmdOutf("[Speed]    Normal=%d%%  Slow=%d%%  Fast=%d%%  (use 'speed <0-100>' to change normal)",
+            ctx.mapperCfg->maxSpeedNormal,
+            ctx.mapperCfg->maxSpeedSlow,
+            ctx.mapperCfg->maxSpeedFast);
+    }
 
 #ifdef ENABLE_BATTERY_MONITOR
     if (ctx.batteryPct) {
@@ -758,6 +766,33 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         ledSetAssistLevel(*ctx.assistLevel);
         bleSendAssistLevel(*ctx.assistLevel);
         _scCmdOutf("Assist -> %s (persisted to NVS)", assistConfigs[*ctx.assistLevel].name);
+        return;
+    }
+
+    // speed [0-100]  -- show or set normal-mode max speed percentage
+    if (strcmp(cmd, "speed") == 0 || strncmp(cmd, "speed ", 6) == 0) {
+        if (!ctx.mapperCfg) {
+            _scCmdOut("speed: mapper config not available");
+            return;
+        }
+        if (strcmp(cmd, "speed") == 0) {
+            _scCmdOutf("[Speed] Normal=%d%%  Slow=%d%%  Fast=%d%%",
+                ctx.mapperCfg->maxSpeedNormal,
+                ctx.mapperCfg->maxSpeedSlow,
+                ctx.mapperCfg->maxSpeedFast);
+            _scCmdOut("[Speed] Set with: 'speed <0-100>'  (normal mode, persisted)");
+            return;
+        }
+        const char* arg = cmd + 6;
+        int val = atoi(arg);
+        if (val < 0 || val > 100) {
+            _scCmdOut("speed: value must be 0-100");
+            return;
+        }
+        ctx.mapperCfg->maxSpeedNormal = val;
+        bool saved = nvsSaveMaxSpeed((uint8_t)val);
+        _scCmdOutf("[Speed] Normal mode max speed -> %d%%%s",
+            val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
         return;
     }
 
@@ -1168,14 +1203,30 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             }
             const char* assistName = (activeAssist < ASSIST_COUNT) ? assistConfigs[activeAssist].name : "?";
 
+            // Determine selected profile: explicitly saved name, or derived from sources
+            char activeProfileName[16] = {0};
+            bool profSaved = nvsLoadActiveProfile(activeProfileName, sizeof(activeProfileName));
+            const char* selectedProfile;
+            if (profSaved && activeProfileName[0] != '\0') {
+                selectedProfile = activeProfileName;
+            }
+            else if (!lmacNvs && !rmacNvs && !lkeyNvs && !rkeyNvs) {
+                selectedProfile = _scProfileEnvAvailable ? "env (fallback)" : "default";
+            }
+            else {
+                selectedProfile = "custom (NVS override)";
+            }
+
             _scCmdOut("[Config] --- Active Profile ---");
+            _scCmdOutf("[Config] Selected   : %s", selectedProfile);
             _scCmdOutf("[Config] Left  MAC  : %-17s  [%s]", activeLmac,  lmacSrc);
             _scCmdOutf("[Config] Right MAC  : %-17s  [%s]", activeRmac,  rmacSrc);
             _scCmdOutf("[Config] Left  Key  : %s  [%s]", lkeyHex, lkeySrc);
             _scCmdOutf("[Config] Right Key  : %s  [%s]", rkeyHex, rkeySrc);
             _scCmdOutf("[Config] Assist     : %s (%u)  [%s]", assistName, activeAssist, assistSrc);
-            _scCmdOutf("[Config] Profiles   : env=%s  default=YES  (switch: 'config profile <env|default>')",
+            _scCmdOutf("[Config] Available  : env=%s  default=YES",
                 _scProfileEnvAvailable ? "YES" : "no");
+            _scCmdOut("[Config] Switch     : 'config profile <env|default>'");
         }
         else if (strncmp(arg, "profile ", 8) == 0) {
             const char* profile = arg + 8;
@@ -1198,6 +1249,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 ok &= nvsSaveMac(WHEEL_RIGHT, _scProfileEnvRightMac);
                 ok &= nvsSaveKey(WHEEL_LEFT, _scProfileEnvLeftKey);
                 ok &= nvsSaveKey(WHEEL_RIGHT, _scProfileEnvRightKey);
+                nvsSaveActiveProfile("env");
 
                 _scApplyProfile(
                     _scProfileEnvLeftMac, _scProfileEnvRightMac,
@@ -1215,6 +1267,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             }
             else if (strcmp(profile, "default") == 0) {
                 nvsClearAll();
+                nvsSaveActiveProfile("default");
                 _scApplyProfile(
                     _scProfileDefaultLeftMac, _scProfileDefaultRightMac,
                     _scProfileDefaultLeftKey, _scProfileDefaultRightKey,
