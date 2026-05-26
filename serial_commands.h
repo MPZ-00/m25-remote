@@ -961,9 +961,11 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 durationMs = constrain(durationMs, 100, 5000);
             }
         }
-        // Sign convention: forward = left negative, right positive (matches mapper output).
-        // Motor task: left_wire_pct = -cmd.left, right_wire_pct = cmd.right
-        float left  = isFwd ? -(float)speed : (float)speed;
+        // Use the same sign convention as the supervisor/mapper: both positive for
+        // forward, both negative for backward.  The motor task then applies
+        // "-cmd.left" for the left wheel so the wire value comes out negative
+        // (M25 left-wheel protocol: negative = forward, matching Python GUI).
+        float left  = isFwd ?  (float)speed : -(float)speed;
         float right = isFwd ?  (float)speed : -(float)speed;
 
         _scCmdOutf("[Drive] %s %d%% for %dms", isFwd ? "fwd" : "bwd", speed, durationMs);
