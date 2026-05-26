@@ -232,41 +232,31 @@ inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int 
 }
 
 // ---------------------------------------------------------------------------
-// Full-range calibration: block for durationMs, sampling the joystick while
-// the user moves it to all corners.  Then apply and store results via output
-// params (caller responsible for NVS persistence if desired).
-// Must not be called while driving (the main loop is blocked during sampling).
+// Per-direction sampling helpers for step-by-step full-range calibration.
+// Block for durationMs and return the extreme raw value seen on that axis.
+// The caller (serial command handler) orchestrates the directions and prints
+// the instructions; these just do the ADC sampling.
 // ---------------------------------------------------------------------------
-inline void joystickCalibrateFullRange(unsigned long durationMs,
-                                       int* outXMin, int* outXMax,
-                                       int* outYMin, int* outYMax) {
-    int xMin = _jsXCenter, xMax = _jsXCenter;
-    int yMin = _jsYCenter, yMax = _jsYCenter;
-
+inline int joystickSampleAxisMax(uint8_t pin, unsigned long durationMs) {
+    int peak = joystickReadRawAxis(pin);
     unsigned long end = millis() + durationMs;
-    unsigned long nextTick = millis() + 1000;
-    int remaining = (int)(durationMs / 1000);
-
     while (millis() < end) {
-        int x = joystickReadRawAxis(JOYSTICK_X_PIN);
-        int y = joystickReadRawAxis(JOYSTICK_Y_PIN);
-        if (x < xMin) xMin = x;
-        if (x > xMax) xMax = x;
-        if (y < yMin) yMin = y;
-        if (y > yMax) yMax = y;
-        if (millis() >= nextTick) {
-            Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
-                "  %ds  X=%d..%d  Y=%d..%d", remaining--, xMin, xMax, yMin, yMax);
-            nextTick += 1000;
-        }
+        int v = joystickReadRawAxis(pin);
+        if (v > peak) peak = v;
         delay(10);
     }
+    return peak;
+}
 
-    joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
-    if (outXMin) *outXMin = _jsXMin;
-    if (outXMax) *outXMax = _jsXMax;
-    if (outYMin) *outYMin = _jsYMin;
-    if (outYMax) *outYMax = _jsYMax;
+inline int joystickSampleAxisMin(uint8_t pin, unsigned long durationMs) {
+    int peak = joystickReadRawAxis(pin);
+    unsigned long end = millis() + durationMs;
+    while (millis() < end) {
+        int v = joystickReadRawAxis(pin);
+        if (v < peak) peak = v;
+        delay(10);
+    }
+    return peak;
 }
 
 // ---------------------------------------------------------------------------

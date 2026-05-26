@@ -21,7 +21,9 @@
  *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning  (persisted to NVS)
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
  *   recal                       Recalibrate joystick center position
- *   cal full [s]                Full-range joystick calibration (wiggle to all corners, default 5 s)
+ *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right, 600ms grace + 1200ms sample each)
+ *   fwd [speed] [ms]            Drive straight forward at speed% for ms (default 30%% 2000ms, max 5s)
+ *   bwd [speed] [ms]            Drive straight backward (same defaults)
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
  *   disarm                      Disarm motors (ARMED/DRIVING -> PAIRED, safe stop first)
  *   stop                        Software emergency stop (enters FAILSAFE state)
@@ -227,6 +229,8 @@ static void _scPrintHelp() {
     _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
+    _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
+    _scCmdOut("  bwd [speed] [ms]          Drive backward (default 30%% 2000ms, max 5s)");
     _scCmdOut("  disarm                    Disarm motors (ARMED/DRIVING -> PAIRED)");
     _scCmdOut("  stop                      Software emergency stop (-> FAILSAFE)");
     _scCmdOut("  reset                     Clear FAILSAFE state -> reconnect");
@@ -837,25 +841,58 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         return;
     }
 
-    // cal full [seconds]
+    // cal full [hold_ms]
+    // Step-by-step directional calibration.  Each step: grace pause -> sample.
+    // hold_ms = sampling window per direction (default 1200 ms).
     if (strcmp(cmd, "cal full") == 0 || strncmp(cmd, "cal full ", 9) == 0) {
         if (*ctx.state == STATE_OPERATING) {
             _scCmdOut("cal full: disarm first (cannot calibrate while driving)");
             return;
         }
-        unsigned long secs = 5;
+        unsigned long holdMs = 1200;
         if (strncmp(cmd, "cal full ", 9) == 0) {
             int v = atoi(cmd + 9);
-            if (v >= 2 && v <= 30) secs = (unsigned long)v;
+            if (v >= 300 && v <= 5000) holdMs = (unsigned long)v;
         }
-        _scCmdOutf("[Cal] Full-range joystick calibration: %lus - move stick to ALL corners now!", secs);
-        _scCmdOut("[Cal] (UP, DOWN, LEFT, RIGHT, and all diagonals)");
-        int xMin, xMax, yMin, yMax;
-        joystickCalibrateFullRange(secs * 1000UL, &xMin, &xMax, &yMin, &yMax);
-        bool saved = nvsSaveJsRange(xMin, xMax, yMin, yMax);
+        const unsigned long graceMs = 600;
+
+        // Each direction: print instruction, grace pause, sample, print raw.
+        // FORWARD = Y-axis max  (stick away from you)
+        _scCmdOut("[Cal] Step 1/4 --- Push stick FORWARD (away from you) and hold ---");
+        delay(graceMs);
+        _scCmdOut("[Cal]   sampling...");
+        int yMax = joystickSampleAxisMax(JOYSTICK_Y_PIN, holdMs);
+        _scCmdOutf("[Cal]   Y max = %d", yMax);
+
+        // BACKWARD = Y-axis min
+        _scCmdOut("[Cal] Step 2/4 --- Push stick BACKWARD (toward you) and hold ---");
+        delay(graceMs);
+        _scCmdOut("[Cal]   sampling...");
+        int yMin = joystickSampleAxisMin(JOYSTICK_Y_PIN, holdMs);
+        _scCmdOutf("[Cal]   Y min = %d", yMin);
+
+        // LEFT = X-axis min
+        _scCmdOut("[Cal] Step 3/4 --- Push stick LEFT and hold ---");
+        delay(graceMs);
+        _scCmdOut("[Cal]   sampling...");
+        int xMin = joystickSampleAxisMin(JOYSTICK_X_PIN, holdMs);
+        _scCmdOutf("[Cal]   X min = %d", xMin);
+
+        // RIGHT = X-axis max
+        _scCmdOut("[Cal] Step 4/4 --- Push stick RIGHT and hold ---");
+        delay(graceMs);
+        _scCmdOut("[Cal]   sampling...");
+        int xMax = joystickSampleAxisMax(JOYSTICK_X_PIN, holdMs);
+        _scCmdOutf("[Cal]   X max = %d", xMax);
+
+        _scCmdOut("[Cal] Return stick to CENTER");
+
+        joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+        bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax);
         _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
-            xMin, xMax, yMin, yMax,
+            _jsXMin, _jsXMax, _jsYMin, _jsYMax,
             saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+        _scCmdOut("[Cal] Run 'js' with full deflection to verify norm reaches ~1.0");
         return;
     }
 
@@ -890,6 +927,53 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         }
         ctx.supervisor->requestDisarm();
         _scCmdOut("Disarmed -> PAIRED");
+        return;
+    }
+
+    // fwd [speed_pct] [duration_ms]
+    // bwd [speed_pct] [duration_ms]
+    // Drive straight forward/backward for a fixed duration then stop.
+    // Matches Python GUI "Quick Forward/Backward" for tx-packet comparison.
+    // Requires ARMED state.  Loop blocks while driving (supervisor keep-alive
+    // is suspended but BLE remains connected; limit <= 5 s enforced).
+    if (strncmp(cmd, "fwd", 3) == 0 || strncmp(cmd, "bwd", 3) == 0) {
+        if (!ctx.supervisor || !bleAnyConnected()) {
+            _scCmdOut("fwd/bwd: must be connected and armed");
+            return;
+        }
+        SupervisorState supState = ctx.supervisor->getState();
+        if (supState != SUPERVISOR_ARMED && supState != SUPERVISOR_DRIVING) {
+            _scCmdOutf("fwd/bwd: arm first (state=%s)", supervisorStateToString(supState));
+            return;
+        }
+        bool isFwd = (cmd[0] == 'f');
+        // Parse optional args: "fwd [speed] [ms]"
+        int speed = 30, durationMs = 2000;
+        const char* args = cmd + (isFwd ? 3 : 3);  // skip "fwd"/"bwd"
+        while (*args == ' ') args++;
+        if (*args) {
+            speed = atoi(args);
+            speed = constrain(speed, 1, 100);
+            while (*args && *args != ' ') args++;
+            while (*args == ' ') args++;
+            if (*args) {
+                durationMs = atoi(args);
+                durationMs = constrain(durationMs, 100, 5000);
+            }
+        }
+        // Sign convention: forward = left negative, right positive (matches mapper output).
+        // Motor task: left_wire_pct = -cmd.left, right_wire_pct = cmd.right
+        float left  = isFwd ? -(float)speed : (float)speed;
+        float right = isFwd ?  (float)speed : -(float)speed;
+
+        _scCmdOutf("[Drive] %s %d%% for %dms", isFwd ? "fwd" : "bwd", speed, durationMs);
+        unsigned long end = millis() + (unsigned long)durationMs;
+        while (millis() < end) {
+            bleSendMotorCommand(left, right);
+            delay(40);  // ~25 Hz
+        }
+        bleSendStop();
+        _scCmdOut("[Drive] stopped");
         return;
     }
 
