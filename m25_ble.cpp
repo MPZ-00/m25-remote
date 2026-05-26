@@ -2387,6 +2387,16 @@ static void _bleMotorTask(void* /*pv*/) {
             }
             ok &= sent;
 
+            // Await echo notification from this wheel before writing the next.
+            // Matches Python request/response pattern; 250 ms covers normal round-trips.
+            if (sent && !cmd.isStop) {
+                uint32_t t0 = _wheels[i].lastNotifyMs;
+                uint32_t deadline = millis() + 250;
+                while (_wheels[i].lastNotifyMs == t0 && millis() < deadline) {
+                    vTaskDelay(pdMS_TO_TICKS(5));
+                }
+            }
+
             if (cmd.isStop && sent) {
                 bool modeOk = _writeDriveModeIfNeeded(i, targetDriveMode);
                 if (!modeOk && Logger::instance().isTagEnabled(TAG_BLE)) {
@@ -2395,12 +2405,11 @@ static void _bleMotorTask(void* /*pv*/) {
                 ok &= modeOk;
             }
         }
-        // Log write failures unconditionally (not behind tag checks):
-        // first failure is always printed; then every 20 cycles (~1 s at 20 Hz).
+        // First failure always logged; subsequent every 20 cycles.
         if (!ok) {
             motorFailStreak++;
             if (motorFailStreak == 1 || (motorFailStreak % 20) == 0) {
-                LOG_ERROR(TAG_MOTOR, "write FAILED (streak: %u cycles @ 20 Hz)",
+                LOG_ERROR(TAG_MOTOR, "write FAILED (streak: %u cycles)",
                     (unsigned)motorFailStreak);
             }
         }
@@ -2410,11 +2419,7 @@ static void _bleMotorTask(void* /*pv*/) {
             motorFailStreak = 0;
         }
         _motorWriteOk = ok;
-        // Pace writes to ~20 Hz and yield to IDLE0 on Core 0. Without this,
-        // xQueueOverwrite at loop() rate keeps the queue permanently occupied,
-        // xQueueReceive never blocks, and the motor task starves IDLE0 until
-        // the task watchdog fires.
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(10));  // yield to IDLE0 between cycles
     }
 }
 
