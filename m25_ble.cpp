@@ -1327,7 +1327,11 @@ void _updateWheelCache(int idx, const ResponseHeader* hdr, const ResponseData* d
     }
     else if (hdr->serviceId == M25_SRV_APP_MGMT &&
         (hdr->paramId == M25_PARAM_STATUS_DRIVE_MODE ||
-            hdr->paramId == M25_PARAM_READ_DRIVE_MODE)) {
+            hdr->paramId == M25_PARAM_READ_DRIVE_MODE ||
+            hdr->paramId == M25_PARAM_WRITE_DRIVE_MODE)) {
+        // WRITE echo (0x20) also counts: wheel confirms the mode it accepted.
+        // Lets _readRemoteBitLatched verify the latch without requiring the
+        // wheel to respond to an explicit READ_DRIVE_MODE query.
         w.driveModeBits = data->driveMode.mode;
         w.driveModeReadbackBits = data->driveMode.mode;
         w.driveModeReadbackMs = millis();
@@ -1781,29 +1785,22 @@ bool _connectWheel(int idx) {
         };
 
     auto _readRemoteBitLatched = [&](uint8_t* observedMode) {
-        uint32_t beforeMs = w.driveModeReadbackMs;
+        // Prompt the wheel in case it responds to explicit read queries.
+        // If it doesn't, the arm write echoes already updated driveModeReadbackBits.
         bool sent = _sendCommand(idx, M25_SRV_APP_MGMT, M25_PARAM_READ_DRIVE_MODE, nullptr, 0);
         if (!sent) {
-            return false;
+            LOG_WARN(TAG_BLE, "%s wheel: READ_DRIVE_MODE prompt failed", wheelName);
         }
 
-        uint32_t waitStart = millis();
-        while ((millis() - waitStart) < readbackRetryDelayMs) {
-            if (w.driveModeReadbackValid && w.driveModeReadbackMs != beforeMs) {
-                if (observedMode) *observedMode = w.driveModeReadbackBits;
-                return (w.driveModeReadbackBits & M25_DRIVE_MODE_REMOTE) != 0;
-            }
-            extern void ledTick();
-            extern void buzzerTick();
-            ledTick();
-            buzzerTick();
-            delay(5);
-        }
+        _delayWithUiTicks(readbackRetryDelayMs);
 
         if (observedMode && w.driveModeReadbackValid) {
             *observedMode = w.driveModeReadbackBits;
         }
-        return false;
+        if (!w.driveModeReadbackValid) {
+            return false;
+        }
+        return (w.driveModeReadbackBits & M25_DRIVE_MODE_REMOTE) != 0;
         };
 
     auto _sendDriveModeEdgePulse = [&](uint8_t riseMode, uint8_t attemptNo) {
@@ -1867,19 +1864,23 @@ bool _connectWheel(int idx) {
             _delayWithUiTicks(rearmDelayMs);
         }
 
+        // Send all candidates in sequence: 0x06 (REMOTE|CRUISE) then 0x04 (REMOTE).
+        // Both writes are required -- 0x06 starts the latch, 0x04 completes it.
+        // Treat armWriteOk as true if at least one write succeeded.
         bool armWriteOk = false;
         for (uint8_t mode : remoteModeCandidates) {
             bool writeOk = _sendCommand(idx, M25_SRV_APP_MGMT, M25_PARAM_WRITE_DRIVE_MODE, &mode, 1);
-            if (writeOk) {
+            if (!writeOk) {
+                _txStatsCountDriveModeWriteFail();
+                LOG_WARN(TAG_BLE, "%s wheel: arm write 0x%02X failed (%u/%u)",
+                    wheelName,
+                    mode,
+                    (unsigned)attempt,
+                    (unsigned)connectAttempts);
+            } else {
                 armWriteOk = true;
-                break;
             }
-            _txStatsCountDriveModeWriteFail();
-            LOG_WARN(TAG_BLE, "%s wheel: arm write 0x%02X failed (%u/%u)",
-                wheelName,
-                mode,
-                (unsigned)attempt,
-                (unsigned)connectAttempts);
+            _delayWithUiTicks(edgePulseDelayMs);
         }
         if (!armWriteOk) {
             if (attempt < connectAttempts) _delayWithUiTicks(rearmDelayMs);
