@@ -57,6 +57,7 @@
 #include "device_config.h"
 #include "nvs_config.h"
 #include "types.h"
+#include "mapper.h"
 #include "led_control.h"
 #include "joystick.h"
 #include "motor_control.h"
@@ -156,6 +157,7 @@ struct SerialContext {
     bool* hillHoldOn;
     Supervisor* supervisor;
     MapperConfig* mapperCfg;       // for speed limit read/write
+    Mapper* mapper;                // mapper holds a private config copy; write changes through
     void (*fnEnterOff)();
     void (*fnRecalibrate)();
 #ifdef ENABLE_BATTERY_MONITOR
@@ -801,6 +803,9 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             return;
         }
         ctx.mapperCfg->maxSpeedNormal = val;
+        // Mapper copied the config at construction; push the change through
+        // or the new limit never takes effect.
+        if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
         bool saved = nvsSaveMaxSpeed((uint8_t)val);
         _scCmdOutf("[Speed] Normal mode max speed -> %d%%%s",
             val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");

@@ -264,6 +264,7 @@ static SerialContext _serialCtx = {
     &hillHoldOn,
     &supervisor,
     &mapperConfig,
+    &mapper,
     enterOff,
     joystickRecalibrate,
 #ifdef ENABLE_BATTERY_MONITOR
@@ -327,6 +328,8 @@ void setup() {
         uint8_t savedSpeed = 0;
         if (nvsLoadMaxSpeed(&savedSpeed)) {
             mapperConfig.maxSpeedNormal = savedSpeed;
+            // mapper was constructed before setup() with the default config copy
+            mapper.setConfig(mapperConfig);
             LOG_INFO(TAG_BOOT, "Max speed (normal) loaded from NVS: %u%%", savedSpeed);
         }
     }
