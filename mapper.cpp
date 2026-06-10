@@ -46,6 +46,13 @@ bool Mapper::map(const ControlState &state, CommandFrame &outCommand)
 
     // Apply mode-specific speed limit
     int maxSpeed = _config.getMaxSpeed(state.mode);
+
+    // SAFETY: low wheel battery caps speed in every mode (graceful degradation
+    // instead of the wheel cutting out under load)
+    if (_lowBatteryLimit && maxSpeed > _config.maxSpeedLowBattery)
+    {
+        maxSpeed = _config.maxSpeedLowBattery;
+    }
     left = left * maxSpeed; // Scale to actual speed values
     right = right * maxSpeed;
     left = clamp(left, -maxSpeed, maxSpeed);

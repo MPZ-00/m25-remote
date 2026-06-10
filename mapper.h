@@ -39,6 +39,7 @@ public:
         , _lastCommand()
         , _lastTime(0)
         , _hasLastCommand(false)
+        , _lowBatteryLimit(false)
     {}
     
     /**
@@ -72,15 +73,24 @@ public:
      * Get last command (for heartbeat).
      * Returns stop command if no previous command exists.
      */
-    CommandFrame getLastCommand() const { 
-        return _hasLastCommand ? _lastCommand : CommandFrame::stop(); 
+    CommandFrame getLastCommand() const {
+        return _hasLastCommand ? _lastCommand : CommandFrame::stop();
     }
+
+    /**
+     * Enable/disable the low-battery speed cap (config.maxSpeedLowBattery).
+     * Set by the Supervisor from wheel telemetry. Survives reset() —
+     * it reflects vehicle state, not command history.
+     */
+    void setLowBatteryLimit(bool active) { _lowBatteryLimit = active; }
+    bool isLowBatteryLimited() const { return _lowBatteryLimit; }
 
 private:
     MapperConfig  _config;
     CommandFrame  _lastCommand;
     uint32_t      _lastTime;
     bool          _hasLastCommand;
+    bool          _lowBatteryLimit;
     
     /**
      * Apply deadzone to eliminate drift and small movements.

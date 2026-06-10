@@ -793,6 +793,10 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 ctx.mapperCfg->maxSpeedNormal,
                 ctx.mapperCfg->maxSpeedSlow,
                 ctx.mapperCfg->maxSpeedFast);
+            if (ctx.mapper && ctx.mapper->isLowBatteryLimited()) {
+                _scCmdOutf("[Speed] LOW BATTERY - all modes capped to %d%%",
+                    ctx.mapperCfg->maxSpeedLowBattery);
+            }
             _scCmdOut("[Speed] Set with: 'speed <0-100>'  (normal mode, persisted)");
             return;
         }

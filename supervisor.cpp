@@ -630,12 +630,16 @@ void Supervisor::pollTelemetry() {
     int minBatt = _vehicleState.batteryMin();
     bool wasLow = _vehicleState.lowBattery;
     _vehicleState.lowBattery = (minBatt >= 0 && minBatt < (int)_config.lowBatteryThreshold);
-    if (_vehicleState.lowBattery && !wasLow) {
-        LOG_WARN(TAG_TELEMETRY, "LOW BATTERY WARNING: %d%% (threshold: %d%%)",
-            minBatt, _config.lowBatteryThreshold);
-    }
-    else if (!_vehicleState.lowBattery && wasLow) {
-        LOG_INFO(TAG_TELEMETRY, "Battery level restored above threshold");
+    if (_vehicleState.lowBattery != wasLow) {
+        _mapper.setLowBatteryLimit(_vehicleState.lowBattery);
+        if (_vehicleState.lowBattery) {
+            LOG_WARN(TAG_TELEMETRY, "LOW BATTERY WARNING: %d%% (threshold: %d%%) - speed capped to %d%%",
+                minBatt, _config.lowBatteryThreshold,
+                _mapper.getConfig().maxSpeedLowBattery);
+        }
+        else {
+            LOG_INFO(TAG_TELEMETRY, "Battery level restored above threshold - speed cap lifted");
+        }
     }
 }
 

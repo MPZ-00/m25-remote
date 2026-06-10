@@ -243,6 +243,58 @@ void testSpeedLimiting() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Low-Battery Speed Cap
+// ---------------------------------------------------------------------------
+void testLowBatterySpeedCap() {
+    Serial.println("\n=== Test: Low-Battery Speed Cap ===");
+
+    MapperConfig config;
+    config.deadzone = 0.0f;
+    config.curve = 1.0f;
+    config.maxSpeedSlow = 30;
+    config.maxSpeedNormal = 60;
+    config.maxSpeedFast = 100;
+    config.maxSpeedLowBattery = 40;
+    Mapper mapper(config);
+
+    ControlState state;
+    CommandFrame cmd;
+    state.deadman = true;
+    state.vx = 1.0f;  // Full forward
+    state.vy = 0.0f;
+
+    // Test 1: Limit inactive by default
+    state.mode = DRIVE_MODE_NORMAL;
+    mapper.map(state, cmd);
+    ASSERT_EQ(60, cmd.leftSpeed, "Limit off: NORMAL uncapped");
+
+    // Test 2: Limit caps NORMAL and FAST modes
+    mapper.setLowBatteryLimit(true);
+    mapper.map(state, cmd);
+    ASSERT_EQ(40, cmd.leftSpeed, "Limit on: NORMAL capped to 40");
+
+    state.mode = DRIVE_MODE_FAST;
+    mapper.map(state, cmd);
+    ASSERT_EQ(40, cmd.leftSpeed, "Limit on: FAST capped to 40");
+
+    // Test 3: Modes already below the cap are unaffected
+    state.mode = DRIVE_MODE_SLOW;
+    mapper.map(state, cmd);
+    ASSERT_EQ(30, cmd.leftSpeed, "Limit on: SLOW stays 30");
+
+    // Test 4: Limit survives reset() (vehicle state, not command history)
+    mapper.reset();
+    state.mode = DRIVE_MODE_NORMAL;
+    mapper.map(state, cmd);
+    ASSERT_EQ(40, cmd.leftSpeed, "Limit survives mapper reset");
+
+    // Test 5: Clearing the limit restores full speed
+    mapper.setLowBatteryLimit(false);
+    mapper.map(state, cmd);
+    ASSERT_EQ(60, cmd.leftSpeed, "Limit cleared: NORMAL restored");
+}
+
+// ---------------------------------------------------------------------------
 // Test: Acceleration Ramping
 // ---------------------------------------------------------------------------
 void testRamping() {
@@ -352,6 +404,7 @@ void setup() {
     testResponseCurves();
     testDifferentialDrive();
     testSpeedLimiting();
+    testLowBatterySpeedCap();
     testRamping();
     testSafetyClamping();
     testReset();
