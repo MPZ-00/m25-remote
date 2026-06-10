@@ -17,6 +17,7 @@
  *   js                          One-shot joystick snapshot (raw + normalized + direction)
  *   ble                         BLE connection status for each wheel
  *   wheels                      Verbose per-wheel status + key
+ *   wheels <dual|left|right>    Switch wheel mode at runtime (persisted, reconnects)
  *   telemetry                   Request fresh telemetry from wheels + print cached values
  *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning  (persisted to NVS)
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
@@ -213,6 +214,7 @@ static void _scPrintHelp() {
     _scCmdOut("  buttons                   Button hardware and state details");
     _scCmdOut("  ble                       Quick BLE connection status");
     _scCmdOut("  wheels                    Verbose per-wheel status + key");
+    _scCmdOut("  wheels <dual|left|right>  Switch wheel mode (persisted, reconnects)");
     _scCmdOut("  telemetry                 Request fresh telemetry from wheels + print cached values");
     _scCmdOut("--- Recording ---");
     _scCmdOut("  record start [N]          Record BLE traffic for N seconds (default 10)");
@@ -1215,6 +1217,39 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     // wheels - verbose per-wheel dump
     if (strcmp(cmd, "wheels") == 0) {
         _scPrintWheels();
+        return;
+    }
+
+    // wheels <dual|left|right> - switch wheel mode at runtime (persisted)
+    if (strncmp(cmd, "wheels ", 7) == 0) {
+        const char* arg = cmd + 7;
+        uint8_t mode;
+        if      (strcmp(arg, "dual")  == 0) mode = WHEEL_MODE_DUAL;
+        else if (strcmp(arg, "left")  == 0) mode = WHEEL_MODE_LEFT_ONLY;
+        else if (strcmp(arg, "right") == 0) mode = WHEEL_MODE_RIGHT_ONLY;
+        else {
+            _scCmdOut("wheels: use 'dual', 'left' or 'right'");
+            return;
+        }
+        if (*ctx.state == STATE_OPERATING) {
+            _scCmdOut("wheels: ignored - motors active, stop first");
+            return;
+        }
+        if (mode == bleGetWheelMode()) {
+            _scCmdOutf("wheels: already %s", bleWheelModeName(mode));
+            return;
+        }
+        bleSetWheelMode(mode);
+        if (nvsSaveWheelMode(mode)) {
+            _scCmdOutf("Wheel mode -> %s (persisted to NVS)", bleWheelModeName(mode));
+        }
+        else {
+            _scCmdOutf("Wheel mode -> %s (NVS save failed - runtime only)", bleWheelModeName(mode));
+        }
+        if (ctx.supervisor) {
+            _scCmdOut("Reconnecting to apply...");
+            ctx.supervisor->requestReconnect();
+        }
         return;
     }
 

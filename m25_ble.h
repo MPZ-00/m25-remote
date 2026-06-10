@@ -351,8 +351,15 @@ const char* _nackCodeToString(uint8_t code);
 bool _isNack(uint8_t paramId);
 bool _isAck(uint8_t paramId);
 
-// Wheel activity filter (respects WHEEL_MODE)
+// Wheel activity filter (respects the runtime wheel mode)
 bool _wheelActive(int idx);
+
+// Runtime wheel mode (WHEEL_MODE_DUAL / LEFT_ONLY / RIGHT_ONLY).
+// Defaults to the compile-time WHEEL_MODE; persisted via NVS, set via the
+// 'wheels' serial command. Only switch while disarmed, then reconnect.
+bool bleSetWheelMode(uint8_t mode);      // false if mode is out of range
+uint8_t bleGetWheelMode();
+const char* bleWheelModeName(uint8_t mode);
 
 // Encryption/decryption
 bool _m25Encrypt(const uint8_t* key, const uint8_t* spp, uint8_t sppLen,

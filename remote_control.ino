@@ -314,6 +314,16 @@ void setup() {
         "Recalibrating joystick after safety check");
     joystickRecalibrate();
 
+    // Load persisted wheel mode before bleInit so the boot log shows the
+    // effective mode (falls back to compile-time WHEEL_MODE).
+    {
+        uint8_t savedMode = 0;
+        if (nvsLoadWheelMode(&savedMode)) {
+            bleSetWheelMode(savedMode);
+            LOG_INFO(TAG_BOOT, "Wheel mode loaded from NVS: %s", bleWheelModeName(savedMode));
+        }
+    }
+
     bleInit("M25-Remote");
     // Supervisor manages all reconnection; disable bleTick()'s parallel
     // auto-reconnect path to avoid racing with the connect task on Core 0.

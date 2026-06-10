@@ -213,6 +213,32 @@ inline bool nvsLoadMaxSpeed(uint8_t* pct) {
 }
 
 // ---------------------------------------------------------------------------
+// Wheel mode (WHEEL_MODE_DUAL / LEFT_ONLY / RIGHT_ONLY) - bench testing with
+// a single wheel without reflashing.
+// ---------------------------------------------------------------------------
+inline bool nvsSaveWheelMode(uint8_t mode) {
+    if (mode > WHEEL_MODE_RIGHT_ONLY) return false;
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("wheel_mode", mode) == 1;
+    p.end();
+    return ok;
+}
+
+// Fills *mode with persisted value.  Returns true if NVS had a valid value.
+inline bool nvsLoadWheelMode(uint8_t* mode) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    uint8_t val = p.getUChar("wheel_mode", 0xFF);
+    p.end();
+    if (val <= WHEEL_MODE_RIGHT_ONLY) {
+        *mode = val;
+        return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // Joystick full-range calibration (actual ADC min/max per axis, 12-bit: 0-4095).
 // Stored as four int16 values packed into two Bytes blobs to save NVS space.
 // ---------------------------------------------------------------------------
@@ -247,11 +273,13 @@ inline void nvsPrintAll() {
     char    lmac[18], rmac[18];
     uint8_t lkey[16], rkey[16];
     uint8_t assist;
+    uint8_t wheelMode = WHEEL_MODE;
     bool lmacNvs   = nvsLoadMac(WHEEL_LEFT,  lmac, sizeof(lmac));
     bool rmacNvs   = nvsLoadMac(WHEEL_RIGHT, rmac, sizeof(rmac));
     bool lkeyNvs   = nvsLoadKey(WHEEL_LEFT,  lkey);
     bool rkeyNvs   = nvsLoadKey(WHEEL_RIGHT, rkey);
     bool assistNvs = nvsLoadAssistLevel(&assist);
+    bool modeNvs   = nvsLoadWheelMode(&wheelMode);
 
     char lkeyHex[33];
     char rkeyHex[33];
@@ -270,6 +298,8 @@ inline void nvsPrintAll() {
     LOG_INFO(TAG_CONFIG, "Right Key    : %s  (%s)", rkeyHex, rkeyNvs ? "NVS" : "build default");
     LOG_INFO(TAG_CONFIG, "Assist level : %u (%s)  (%s)", assist, assistName,
              assistNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Wheel mode   : %s  (%s)", bleWheelModeName(wheelMode),
+             modeNvs ? "NVS" : "build default");
     LOG_INFO(TAG_CONFIG, "Changes take effect immediately and survive reboot");
     LOG_INFO(TAG_CONFIG, "'config reset' clears NVS; build defaults restored on next boot");
 }

@@ -531,8 +531,32 @@ static void _rfcommSppCb(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
 // Wheel activity filter
 // ---------------------------------------------------------------------------
 
+// Runtime wheel mode, seeded from the compile-time WHEEL_MODE default.
+// volatile: read from Core 0 (connect/motor tasks) and Core 1 (loop).
+// Only change while disarmed - the 'wheels' serial command enforces this.
+static volatile uint8_t _wheelMode = WHEEL_MODE;
+
+bool bleSetWheelMode(uint8_t mode) {
+    if (mode > WHEEL_MODE_RIGHT_ONLY) return false;
+    _wheelMode = mode;
+    return true;
+}
+
+uint8_t bleGetWheelMode() {
+    return _wheelMode;
+}
+
+const char* bleWheelModeName(uint8_t mode) {
+    switch (mode) {
+    case WHEEL_MODE_DUAL:       return "Dual";
+    case WHEEL_MODE_LEFT_ONLY:  return "Left only";
+    case WHEEL_MODE_RIGHT_ONLY: return "Right only";
+    default:                    return "Unknown";
+    }
+}
+
 bool _wheelActive(int idx) {
-    switch (WHEEL_MODE) {
+    switch (_wheelMode) {
     case WHEEL_MODE_DUAL:
         return true;
     case WHEEL_MODE_LEFT_ONLY:
@@ -2086,7 +2110,7 @@ void bleInit(const char* deviceName) {
     }
     LOG_INFO(TAG_RFCOMM, "SPP client initialized");
 #endif
-    LOG_INFO(TAG_BLE, "Wheel mode: %s", WHEEL_MODE_NAME);
+    LOG_INFO(TAG_BLE, "Wheel mode: %s", bleWheelModeName(_wheelMode));
 
     // Allow the ESP32 BLE GATT client stack to fully initialize before any
     // connection attempt.  BLEDevice::init() triggers the BT controller and
@@ -2779,12 +2803,12 @@ void blePrintWheelDetails() {
     Logger& log = Logger::instance();
 #define _WD_LOG(fmt, ...) log.logForced(LogLevel::INFO, TAG_BLE, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-    _WD_LOG("Wheel mode    : %s", WHEEL_MODE_NAME);
+    _WD_LOG("Wheel mode    : %s", bleWheelModeName(_wheelMode));
     for (int i = 0; i < WHEEL_COUNT; i++) {
         WheelConnState_t& w = _wheels[i];
         if (!_wheelActive(i)) {
-            _WD_LOG("[Wheel %s] INACTIVE (WHEEL_MODE = %s)",
-                w.name ? w.name : "?", WHEEL_MODE_NAME);
+            _WD_LOG("[Wheel %s] INACTIVE (wheel mode = %s)",
+                w.name ? w.name : "?", bleWheelModeName(_wheelMode));
             continue;
         }
         _WD_LOG("[Wheel %s]", w.name ? w.name : "?");
