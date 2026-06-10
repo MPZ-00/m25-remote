@@ -110,7 +110,7 @@ Use `config show` over serial to see which source is active for each setting.
 
 | Flag | Effect |
 |------|--------|
-| `WHEEL_MODE` | `WHEEL_MODE_DUAL` / `LEFT_ONLY` / `RIGHT_ONLY` — single-wheel bench testing |
+| `WHEEL_MODE` | `WHEEL_MODE_DUAL` / `LEFT_ONLY` / `RIGHT_ONLY` — compile-time default for single-wheel bench testing; runtime `wheels` serial command overrides it (NVS-persisted) |
 | `NO_JOYSTICK` | Disables ADC; joystick always returns centered (bench testing without hardware) |
 | `NO_DEADMAN_HARDWARE` | Ties deadman permanently HIGH — joystick leaving deadzone is sufficient to drive |
 | `ENABLE_BATTERY_MONITOR` | ADC battery voltage on GPIO36 + auto-shutdown at `BATT_AUTO_OFF_PCT` |

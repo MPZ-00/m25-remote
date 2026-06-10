@@ -47,6 +47,7 @@ stop            Emergency stop → FAILSAFE
 reset           FAILSAFE → reconnect
 setmac / setkey Change wheel credentials (persisted to NVS)
 assist <0|1|2>  Set assist level: 0=indoor 1=outdoor 2=learning (persisted to NVS)
+wheels dual|left|right  Switch wheel mode without reflashing (persisted to NVS)
 config show     Show active MACs, keys, and assist level (NVS vs build default)
 js              Joystick snapshot
 log tag motor on  Enable 20 Hz motor command logging
@@ -76,7 +77,7 @@ Key feature flags in `device_config.h`:
 
 | Flag | Purpose |
 |------|---------|
-| `WHEEL_MODE` | `DUAL` / `LEFT_ONLY` / `RIGHT_ONLY` — single-wheel bench testing |
+| `WHEEL_MODE` | `DUAL` / `LEFT_ONLY` / `RIGHT_ONLY` — compile-time default; switch at runtime with `wheels <dual\|left\|right>` (persisted to NVS) |
 | `NO_JOYSTICK` | ADC reads disabled, always returns centered (bench testing) |
 | `NO_DEADMAN_HARDWARE` | Deadman tied HIGH — joystick leaving deadzone is sufficient |
 | `ENABLE_BATTERY_MONITOR` | ADC battery read on GPIO36 + auto-shutdown |
