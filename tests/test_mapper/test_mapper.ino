@@ -13,8 +13,9 @@
  * Open Serial Monitor at 115200 baud to see results.
  */
 
-#include "../../remote_control/types.h"
-#include "../../remote_control/mapper.h"
+// Resolved in the merged build dir created by prepare_test.ps1 / run_tests.ps1
+#include "types.h"
+#include "mapper.h"
 
 // Test result tracking
 static int testsPassed = 0;

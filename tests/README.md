@@ -2,18 +2,18 @@
 
 ## Test Framework
 
-Unit tests for remote_control components. Each test is a standalone Arduino sketch.
+Unit tests for the firmware components. Each test is a standalone Arduino sketch.
 
 ## Quick Start (Arduino IDE)
 
 ### 1. Prepare Test Build Environment
 ```powershell
-cd esp32/arduino/tests
+cd tests
 .\prepare_test.ps1 -TestName test_supervisor
 ```
 
 This creates/updates `_build_test_supervisor/` with:
-- All files from `remote_control/` (headers, sources)
+- All firmware sources from the repo root (headers, .cpp)
 - Your test as `_build_test_supervisor.ino`
 
 ### 2. Open in Arduino IDE
@@ -31,7 +31,7 @@ Or manually:
 6. Open **Serial Monitor** (115200 baud) to see results
 
 ### 3. Make Changes
-- Edit files in `remote_control/` (production code)
+- Edit production code at the repo root
 - Edit test in `test_supervisor/` (test code)
 - Run `prepare_test.ps1` again to rebuild
 
@@ -40,7 +40,7 @@ Or manually:
 ## Alternative: Command Line (Automated)
 
 ```powershell
-cd esp32/arduino/tests
+cd tests
 .\run_tests.ps1 -Board "esp32:esp32:esp32" -Port "COM8"
 ```
 
@@ -57,7 +57,7 @@ tests/
 ├── test_mapper/            # Mapper safety tests
 │   └── test_mapper.ino
 └── _build_test_supervisor/ # Temporary (git-ignored)
-    ├── *.h, *.cpp          # Copied from remote_control/
+    ├── *.h, *.cpp          # Copied from repo root
     └── _build_test_supervisor.ino
 ```
 

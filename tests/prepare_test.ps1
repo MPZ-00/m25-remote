@@ -10,7 +10,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $testDir = Join-Path $PSScriptRoot $TestName
-$remoteControlDir = Join-Path $PSScriptRoot "..\remote_control"
+# Firmware sources live flat at the repo root (src_dir = . in platformio.ini)
+$firmwareDir = Join-Path $PSScriptRoot ".."
 $buildDir = Join-Path $PSScriptRoot "_build_$TestName"
 
 if (-not (Test-Path $testDir)) {
@@ -36,9 +37,9 @@ if (Test-Path $buildDir) {
     New-Item -ItemType Directory -Path $buildDir | Out-Null
 }
 
-# Copy all remote_control files EXCEPT .ino files
-Write-Host "Copying remote_control files..." -ForegroundColor Yellow
-Get-ChildItem $remoteControlDir -File | Where-Object { $_.Extension -ne ".ino" } | ForEach-Object {
+# Copy firmware sources (headers + .cpp, not the main .ino - the test provides setup/loop)
+Write-Host "Copying firmware sources..." -ForegroundColor Yellow
+Get-ChildItem $firmwareDir -File | Where-Object { $_.Extension -in ".h", ".cpp", ".c" } | ForEach-Object {
     Copy-Item $_.FullName $buildDir -Force
     Write-Host "  - $($_.Name)" -ForegroundColor DarkGray
 }

@@ -67,7 +67,8 @@ foreach ($testDir in $testDirs) {
     # Prepare build directory using same approach as prepare_test.ps1
     Write-Host "Preparing build environment..." -ForegroundColor Yellow
     $buildDir = Join-Path $PSScriptRoot "_build_$testName"
-    $remoteControlDir = Join-Path $PSScriptRoot "..\remote_control"
+    # Firmware sources live flat at the repo root (src_dir = . in platformio.ini)
+    $firmwareDir = Join-Path $PSScriptRoot ".."
     
     # Create or clean build directory
     if (Test-Path $buildDir) {
@@ -76,8 +77,8 @@ foreach ($testDir in $testDirs) {
         New-Item -ItemType Directory -Path $buildDir | Out-Null
     }
     
-    # Copy all remote_control files except .ino
-    Get-ChildItem $remoteControlDir -File | Where-Object { $_.Extension -ne ".ino" } | ForEach-Object {
+    # Copy firmware sources (headers + .cpp, not the main .ino)
+    Get-ChildItem $firmwareDir -File | Where-Object { $_.Extension -in ".h", ".cpp", ".c" } | ForEach-Object {
         Copy-Item $_.FullName $buildDir -Force
     }
     
