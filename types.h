@@ -159,7 +159,10 @@ struct MapperConfig {
     int     maxSpeedFast;       // Max speed in FAST mode (0-100)
     int     maxSpeedLowBattery; // Cap applied to all modes while low-battery limit is active (0-100)
     float   rampRate;           // Max speed change per second (units/sec), <=0 disables ramp
-    
+    float   reverseRatio;       // Reverse speed cap as fraction of forward max (1.0 = no limit).
+                                // The firmware sets this from device_config.h VMAX_REVERSE_RATIO;
+                                // the default here stays 1.0 so unconfigured consumers are unaffected.
+
     // Default constructor with safe defaults
     MapperConfig()
         : deadzone(0.05f)  // joystick.h already removes the hardware deadzone;
@@ -173,6 +176,7 @@ struct MapperConfig {
         // Disable slew limiting by default. At high input update rates it can make
         // commands appear latched around the first non-zero value.
         , rampRate(0.0f)
+        , reverseRatio(1.0f)  // no reverse cap unless the caller opts in
     {}
     
     // Get max speed for a given drive mode

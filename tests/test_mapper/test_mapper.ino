@@ -295,6 +295,62 @@ void testLowBatterySpeedCap() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Reverse Speed Limit (device_config.h VMAX_REVERSE_RATIO)
+// ---------------------------------------------------------------------------
+void testReverseSpeedLimit() {
+    Serial.println("\n=== Test: Reverse Speed Limit ===");
+
+    MapperConfig config;
+    config.deadzone = 0.0f;
+    config.curve = 1.0f;
+    config.maxSpeedNormal = 100;
+    config.reverseRatio = 0.5f;   // reverse capped to 50% of forward
+    Mapper mapper(config);
+
+    ControlState state;
+    CommandFrame cmd;
+    state.deadman = true;
+    state.mode = DRIVE_MODE_NORMAL;
+
+    // Forward is unaffected by the reverse cap
+    state.vx = 1.0f;
+    state.vy = 0.0f;
+    mapper.map(state, cmd);
+    ASSERT_EQ(100, cmd.leftSpeed, "Reverse cap: forward stays full");
+    ASSERT_EQ(100, cmd.rightSpeed, "Reverse cap: forward stays full (right)");
+
+    // Full reverse is capped to reverseRatio * max
+    state.vx = -1.0f;
+    mapper.map(state, cmd);
+    ASSERT_EQ(-50, cmd.leftSpeed, "Reverse cap: full reverse limited to -50");
+    ASSERT_EQ(-50, cmd.rightSpeed, "Reverse cap: full reverse limited to -50 (right)");
+
+    // The cap also bounds the reversing wheel of an in-place turn
+    state.vx = 0.0f;
+    state.vy = 1.0f;   // pure right turn: left wheel goes reverse
+    mapper.map(state, cmd);
+    ASSERT_EQ(-50, cmd.leftSpeed, "Reverse cap: spinning wheel limited to -50");
+    ASSERT_EQ(100, cmd.rightSpeed, "Reverse cap: forward-turning wheel stays full");
+
+    // A reverse command already below the cap is untouched
+    state.vx = -0.25f;
+    state.vy = 0.0f;
+    mapper.map(state, cmd);
+    ASSERT_EQ(-25, cmd.leftSpeed, "Reverse cap: shallow reverse unaffected");
+
+    // Default config (reverseRatio = 1.0) must preserve full-reverse behavior
+    MapperConfig defcfg;
+    defcfg.deadzone = 0.0f;
+    defcfg.curve = 1.0f;
+    defcfg.maxSpeedNormal = 100;
+    Mapper defMapper(defcfg);
+    state.vx = -1.0f;
+    state.vy = 0.0f;
+    defMapper.map(state, cmd);
+    ASSERT_EQ(-100, cmd.leftSpeed, "Default (no cap): full reverse stays -100");
+}
+
+// ---------------------------------------------------------------------------
 // Test: Acceleration Ramping
 // ---------------------------------------------------------------------------
 void testRamping() {
@@ -405,6 +461,7 @@ void setup() {
     testDifferentialDrive();
     testSpeedLimiting();
     testLowBatterySpeedCap();
+    testReverseSpeedLimit();
     testRamping();
     testSafetyClamping();
     testReset();

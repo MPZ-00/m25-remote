@@ -58,6 +58,18 @@ bool Mapper::map(const ControlState &state, CommandFrame &outCommand)
     left = clamp(left, -maxSpeed, maxSpeed);
     right = clamp(right, -maxSpeed, maxSpeed);
 
+    // SAFETY: cap reverse speed to a fraction of the forward maximum
+    // (device_config.h VMAX_REVERSE_RATIO). This also bounds the reversing
+    // wheel during in-place turns. reverseRatio >= 1.0 disables the cap.
+    if (_config.reverseRatio < 1.0f)
+    {
+        float reverseMax = maxSpeed * _config.reverseRatio;
+        if (left < -reverseMax)
+            left = -reverseMax;
+        if (right < -reverseMax)
+            right = -reverseMax;
+    }
+
     // Apply ramping if we have previous command
     if (_config.rampRate > 0.0f && _hasLastCommand && _lastTime > 0)
     {

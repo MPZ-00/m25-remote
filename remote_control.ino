@@ -333,6 +333,13 @@ void setup() {
     // Load persisted assist level (falls back to ASSIST_INDOOR if not set).
     nvsLoadAssistLevel(&assistLevel);
 
+    // Apply the documented reverse-speed safety limit. VMAX_REVERSE_RATIO lives in
+    // device_config.h; MapperConfig defaults to 1.0 (no cap), so this is where the
+    // real device opts in. Reverse driving (and the reversing wheel of an in-place
+    // turn) is capped to this fraction of the forward maximum.
+    mapperConfig.reverseRatio = VMAX_REVERSE_RATIO;
+    mapper.setConfig(mapperConfig);
+
     // Load persisted max-speed override (only applied if NVS has a value).
     {
         uint8_t savedSpeed = 0;
