@@ -264,4 +264,8 @@ enum SystemState : uint8_t {
 // ---------------------------------------------------------------------------
 #define NO_DEADMAN_HARDWARE   // TODO: remove when deadman button is wired
 
+#ifdef NO_DEADMAN_HARDWARE
+#warning "NO_DEADMAN_HARDWARE is enabled: the deadman interlock is bypassed (joystick-only drive). Remove before use on a real chair."
+#endif
+
 #endif // DEVICE_CONFIG_H
