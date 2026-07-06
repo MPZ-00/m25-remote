@@ -33,5 +33,6 @@ desktop.ini
 # Logs
 *.log
 
-# graphify generated output
-graphify-out/
+# graphify machine-local interpreter/path cache
+graphify-out/.graphify_python
+graphify-out/.graphify_root

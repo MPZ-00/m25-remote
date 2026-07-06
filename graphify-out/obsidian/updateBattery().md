@@ -1,0 +1,17 @@
+---
+source_file: "fake_wheel/wheel_state.h"
+type: "code"
+community: "Fake Wheel BLE Server & Buzzer"
+location: "L86"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Fake_Wheel_BLE_Server__Buzzer
+---
+
+# updateBattery()
+
+## Connections
+- [[wheel_state.h]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Fake_Wheel_BLE_Server__Buzzer
