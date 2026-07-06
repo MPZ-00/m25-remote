@@ -281,12 +281,12 @@ inline void nvsPrintAll() {
     bool assistNvs = nvsLoadAssistLevel(&assist);
     bool modeNvs   = nvsLoadWheelMode(&wheelMode);
 
-    char lkeyHex[33];
-    char rkeyHex[33];
-    for (int i = 0; i < 16; i++) {
-        snprintf(&lkeyHex[i * 2], 3, "%02x", lkey[i]);
-        snprintf(&rkeyHex[i * 2], 3, "%02x", rkey[i]);
-    }
+    // Masked keys: reveal only first/last 2 bytes so serial logs can't leak the
+    // full AES key (still enough to verify the right key is loaded).
+    char lkeyHex[16];
+    char rkeyHex[16];
+    snprintf(lkeyHex, sizeof(lkeyHex), "%02x%02x..%02x%02x", lkey[0], lkey[1], lkey[14], lkey[15]);
+    snprintf(rkeyHex, sizeof(rkeyHex), "%02x%02x..%02x%02x", rkey[0], rkey[1], rkey[14], rkey[15]);
 
     const char* assistName = (assist == 0) ? "Indoor" :
                              (assist == 1) ? "Outdoor" : "Learning";

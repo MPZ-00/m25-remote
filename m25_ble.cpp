@@ -2814,13 +2814,12 @@ void blePrintWheelDetails() {
         _WD_LOG("[Wheel %s]", w.name ? w.name : "?");
         _WD_LOG("  MAC          : %s", w.mac);
 
-        char keyHex[3 * 16];
-        size_t off = 0;
-        for (int b = 0; b < 16 && off < sizeof(keyHex); b++) {
-            off += (size_t)snprintf(keyHex + off, sizeof(keyHex) - off,
-                (b < 15) ? "%02X " : "%02X", w.key[b]);
-        }
-        _WD_LOG("  Key (hex)    : %s", keyHex);
+        // Masked key: reveal only the first/last 2 bytes so serial logs can't
+        // leak the full AES key. Still enough to verify the correct key loaded.
+        char keyHex[16];
+        snprintf(keyHex, sizeof(keyHex), "%02X%02X..%02X%02X",
+            w.key[0], w.key[1], w.key[14], w.key[15]);
+        _WD_LOG("  Key (masked) : %s", keyHex);
 
         _WD_LOG("  connected    : %s", w.connected ? "yes" : "no");
         _WD_LOG("  protocolRdy  : %s", w.protocolReady ? "yes" : "no");

@@ -213,7 +213,7 @@ static void _scPrintHelp() {
     _scCmdOut("  js                        One-shot joystick snapshot (includes direction)");
     _scCmdOut("  buttons                   Button hardware and state details");
     _scCmdOut("  ble                       Quick BLE connection status");
-    _scCmdOut("  wheels                    Verbose per-wheel status + key");
+    _scCmdOut("  wheels                    Verbose per-wheel status + masked key");
     _scCmdOut("  wheels <dual|left|right>  Switch wheel mode (persisted, reconnects)");
     _scCmdOut("  telemetry                 Request fresh telemetry from wheels + print cached values");
     _scCmdOut("--- Recording ---");
@@ -239,7 +239,7 @@ static void _scPrintHelp() {
     _scCmdOut("  stop                      Software emergency stop (-> FAILSAFE)");
     _scCmdOut("  reset                     Clear FAILSAFE state -> reconnect");
     _scCmdOut("--- Config (NVS) ---");
-    _scCmdOut("  config show               Print MACs, keys, and assist level (NVS vs build default)");
+    _scCmdOut("  config show               Print MACs, masked keys, assist level (NVS vs build default)");
     _scCmdOut("  config reset              Clear NVS; build defaults on next boot");
     _scCmdOut("  config profile <env|default> Persist+apply profile now, then reconnect");
     _scCmdOut("                               env requires build-time .env values");
@@ -1355,11 +1355,13 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             const char* rkeySrc   = rkeyNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
             const char* assistSrc = assistNvs ? "NVS" : "default";
 
-            char lkeyHex[33] = {0}, rkeyHex[33] = {0};
-            for (int i = 0; i < 16; i++) {
-                snprintf(&lkeyHex[i * 2], 3, "%02x", activeLkey[i]);
-                snprintf(&rkeyHex[i * 2], 3, "%02x", activeRkey[i]);
-            }
+            // Masked keys: reveal only first/last 2 bytes so serial logs can't
+            // leak the full AES key (still enough to verify the right key loaded).
+            char lkeyHex[16] = {0}, rkeyHex[16] = {0};
+            snprintf(lkeyHex, sizeof(lkeyHex), "%02x%02x..%02x%02x",
+                activeLkey[0], activeLkey[1], activeLkey[14], activeLkey[15]);
+            snprintf(rkeyHex, sizeof(rkeyHex), "%02x%02x..%02x%02x",
+                activeRkey[0], activeRkey[1], activeRkey[14], activeRkey[15]);
             const char* assistName = (activeAssist < ASSIST_COUNT) ? assistConfigs[activeAssist].name : "?";
 
             // Determine selected profile: explicitly saved name, or derived from sources
