@@ -274,7 +274,8 @@ struct WheelConnState_t {
     bool                         connected;
     bool                         protocolReady;      // SYSTEM_MODE + DRIVE_MODE acked
     uint8_t                      telegramId;         // SPP sequence counter
-    uint8_t                      driveModeBits;      // current DRIVE_MODE byte
+    uint8_t                      driveModeBits;      // current DRIVE_MODE byte (cached, may drift from wheel)
+    uint32_t                     lastDriveModeWriteMs; // millis() of last actual WRITE_DRIVE_MODE send
 #if M25_TRANSPORT_BLE
     BLEClient* client;
     BLERemoteCharacteristic* rxChar;             // For writing commands to wheel

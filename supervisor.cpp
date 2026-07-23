@@ -791,10 +791,11 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _lastArmedKeepaliveMs = millis();  // keep-alive fires after one interval, not immediately
         _deadzoneStopLatched = false;
         _driveSessionActive = true;        // suppress telemetry until explicit disarm
-        // Queue a zero-speed command so the motor task is alive and the wheel
-        // sits in REMOTE-only mode (0x04) from the start of the ARMED state.
-        // The 0x06->0x04 arm latch is handled by the BLE arm sequence before
-        // reaching this state; the motor task never writes CRUISE (0x02) mid-session.
+        // Queue a zero-speed command so the motor task is alive from the start
+        // of ARMED. Drive mode is periodically re-asserted by the motor task
+        // itself (see _writeDriveModeIfNeeded, m25_ble.cpp) since the wheel can
+        // silently drop out of remote mode with no notification back to us;
+        // the motor task never writes CRUISE (0x02) mid-session.
         if (bleAnyConnected()) {
             bleSendMotorCommand(0.0f, 0.0f);
         }

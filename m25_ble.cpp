@@ -492,6 +492,7 @@ static void _rfcommSppCb(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
             _wheels[idx].connected = false;
             _wheels[idx].protocolReady = false;
             _wheels[idx].driveModeBits = 0;
+            _wheels[idx].lastDriveModeWriteMs = 0;
             _wheels[idx].sppHandle = 0;
             _rfRxLen[idx] = 0;
             _rfcommCloseEvt[idx] = true;
@@ -966,6 +967,7 @@ static bool _handleTxFailure(int idx, uint8_t serviceId, uint8_t paramId, const 
     w.connected = false;
     w.protocolReady = false;
     w.driveModeBits = 0;
+    w.lastDriveModeWriteMs = 0;
     w.driveModeReadbackBits = 0;
     w.driveModeReadbackMs = 0;
     w.driveModeReadbackValid = false;
@@ -1472,6 +1474,7 @@ void M25DisconnectCallback::onDisconnect(BLEClient*) {
     _wheels[wheelIdx].connected = false;
     _wheels[wheelIdx].protocolReady = false;
     _wheels[wheelIdx].driveModeBits = 0;
+    _wheels[wheelIdx].lastDriveModeWriteMs = 0;
     _wheels[wheelIdx].driveModeReadbackBits = 0;
     _wheels[wheelIdx].driveModeReadbackMs = 0;
     _wheels[wheelIdx].driveModeReadbackValid = false;
@@ -1519,6 +1522,7 @@ bool _connectWheel(int idx) {
 
     w.telegramId = M25_TELEGRAM_ID_START;
     w.driveModeBits = 0;
+    w.lastDriveModeWriteMs = 0;
     w.protocolReady = false;
     w.driveModeReadbackBits = 0;
     w.driveModeReadbackMs = 0;
@@ -2168,6 +2172,7 @@ void bleResetWheel(int idx) {
     w.protocolReady = false;
     w.telegramId = M25_TELEGRAM_ID_START;
     w.driveModeBits = 0;
+    w.lastDriveModeWriteMs = 0;
     w.driveModeReadbackBits = 0;
     w.driveModeReadbackMs = 0;
     w.driveModeReadbackValid = false;
@@ -2265,6 +2270,7 @@ void bleDisconnect() {
         w.connected = false;
         w.protocolReady = false;
         w.driveModeBits = 0;
+        w.lastDriveModeWriteMs = 0;
         w.driveModeReadbackBits = 0;
         w.driveModeReadbackMs = 0;
         w.driveModeReadbackValid = false;
@@ -2312,11 +2318,17 @@ static bool _writeDriveModeIfNeeded(int idx, uint8_t targetMode) {
     if (!bleIsConnected(idx)) return false;
 
     WheelConnState_t& w = _wheels[idx];
-    if (w.driveModeBits == targetMode) return true;
+    uint32_t now = millis();
+    // The wheel can silently drop out of remote mode on its own watchdog with
+    // no notification back to us, so a cache match alone is not enough - force
+    // a real re-write at the same margin as the ARMED keep-alive.
+    bool staleCache = (now - w.lastDriveModeWriteMs) >= ARMED_KEEPALIVE_INTERVAL_MS;
+    if (w.driveModeBits == targetMode && !staleCache) return true;
 
     bool sent = _sendCommand(idx, M25_SRV_APP_MGMT, M25_PARAM_WRITE_DRIVE_MODE, &targetMode, 1);
     if (sent) {
         w.driveModeBits = targetMode;
+        w.lastDriveModeWriteMs = now;
     }
     else {
         _txStatsCountDriveModeWriteFail();
