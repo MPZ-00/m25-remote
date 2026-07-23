@@ -64,6 +64,7 @@
 #include "motor_control.h"
 #include "m25_ble.h"
 #include "Logger.h"
+#include "version.h"
 #include <esp_chip_info.h>
 #include <BLEDevice.h>
 #include <stdarg.h>
@@ -196,6 +197,7 @@ static void _scCmdOutf(const char* fmt, ...);
 // Internal print helpers
 // ---------------------------------------------------------------------------
 static void _scPrintHelp() {
+    _scCmdOut("M25 Remote Control " FW_VERSION_STRING);
     _scCmdOut("--- Commands ---");
     _scCmdOut("  help / ?                  This message");
     _scCmdOut("  status                    Full system status (state, wheels, telemetry, watchdogs)");
@@ -448,6 +450,7 @@ static void _scPrintWheels() {
 }
 
 static void _scPrintSysInfo() {
+    _scCmdOutf("[SYS] Firmware: %s", FW_VERSION_STRING);
     // Chip
     esp_chip_info_t chip;
     esp_chip_info(&chip);

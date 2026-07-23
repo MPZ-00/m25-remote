@@ -31,6 +31,7 @@
 #include "serial_commands.h"
 #include "buzzer.h"
 #include "Logger.h"
+#include "version.h"
 
 // ---------------------------------------------------------------------------
 // Button instances (declared extern in button.h)
@@ -277,7 +278,7 @@ void setup() {
     delay(200);
     const uint32_t defaultTagMask = TAG_ALL & ~(TAG_MOTOR | TAG_SUPERVISOR);
     Logger::instance().begin(LogLevel::DEBUG, defaultTagMask);
-    Logger::instance().logForced(LogLevel::INFO, TAG_BOOT, __FILE__, __LINE__, "M25 Remote Control starting...");
+    Logger::instance().logForced(LogLevel::INFO, TAG_BOOT, __FILE__, __LINE__, "M25 Remote Control " FW_VERSION_STRING " starting...");
 
     // Check wake-up reason
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
