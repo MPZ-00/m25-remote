@@ -162,6 +162,11 @@ struct MapperConfig {
     float   reverseRatio;       // Reverse speed cap as fraction of forward max (1.0 = no limit).
                                 // The firmware sets this from device_config.h VMAX_REVERSE_RATIO;
                                 // the default here stays 1.0 so unconfigured consumers are unaffected.
+    float   turnReduction;      // Inner-wheel turn softening (0.0-1.0). At full turn deflection the
+                                // inner wheel's turn contribution is scaled by (1 - turnReduction)
+                                // instead of reversing to full opposite speed. 0.0 = no softening.
+                                // The firmware sets this from device_config.h TURN_REDUCTION;
+                                // the default here stays 0.0 so unconfigured consumers are unaffected.
 
     // Default constructor with safe defaults
     MapperConfig()
@@ -177,6 +182,7 @@ struct MapperConfig {
         // commands appear latched around the first non-zero value.
         , rampRate(0.0f)
         , reverseRatio(1.0f)  // no reverse cap unless the caller opts in
+        , turnReduction(0.0f) // no turn softening unless the caller opts in
     {}
     
     // Get max speed for a given drive mode

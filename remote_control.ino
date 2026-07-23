@@ -339,6 +339,12 @@ void setup() {
     // real device opts in. Reverse driving (and the reversing wheel of an in-place
     // turn) is capped to this fraction of the forward maximum.
     mapperConfig.reverseRatio = VMAX_REVERSE_RATIO;
+
+    // Apply the documented turn-softening limit. TURN_REDUCTION lives in
+    // device_config.h; MapperConfig defaults to 0.0 (no softening), so this is
+    // where the real device opts in. Without it, full joystick deflection spun
+    // the inner wheel to full reverse instead of a gentler pivot turn.
+    mapperConfig.turnReduction = TURN_REDUCTION;
     mapper.setConfig(mapperConfig);
 
     // Load persisted max-speed override (only applied if NVS has a value).

@@ -143,8 +143,15 @@ void Mapper::differentialDrive(float vx, float vy, float &outLeft, float &outRig
     // Basic differential drive: left = vx - vy, right = vx + vy
     // But we need to handle magnitude > 1.0
 
-    float left = vx - vy;
-    float right = vx + vy;
+    // Turn reduction: the inner wheel's turn contribution is scaled by
+    // (1 - turnReduction) instead of applying vy at full strength. At vy=+-1
+    // this leaves the inner wheel at outer*(1-turnReduction) rather than
+    // spinning it to full opposite speed. The outer wheel is unaffected.
+    float leftTurn  = (vy >= 0.0f) ? vy * (1.0f - _config.turnReduction) : vy;
+    float rightTurn = (vy <  0.0f) ? vy * (1.0f - _config.turnReduction) : vy;
+
+    float left = vx - leftTurn;
+    float right = vx + rightTurn;
 
     // Normalize if magnitude exceeds 1.0
     float maxMagnitude = max(fabsf(left), fabsf(right));

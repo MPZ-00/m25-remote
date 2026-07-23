@@ -2425,16 +2425,6 @@ static void _bleMotorTask(void* /*pv*/) {
             }
             ok &= sent;
 
-            // Await echo notification from this wheel before writing the next.
-            // Matches Python request/response pattern; 250 ms covers normal round-trips.
-            if (sent && !cmd.isStop) {
-                uint32_t t0 = _wheels[i].lastNotifyMs;
-                uint32_t deadline = millis() + 250;
-                while (_wheels[i].lastNotifyMs == t0 && millis() < deadline) {
-                    vTaskDelay(pdMS_TO_TICKS(5));
-                }
-            }
-
             if (cmd.isStop && sent) {
                 bool modeOk = _writeDriveModeIfNeeded(i, targetDriveMode);
                 if (!modeOk && Logger::instance().isTagEnabled(TAG_BLE)) {
