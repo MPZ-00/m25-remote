@@ -121,9 +121,11 @@
 // Mapping: ASSIST_INDOOR -> 0, ASSIST_OUTDOOR -> 1, ASSIST_LEARNING -> 2
 static const uint8_t M25_ASSIST_LEVEL_MAP[ASSIST_COUNT] = { 0, 1, 2 };
 
-// Speed scaling: percent (-100..+100) to M25 raw signed int16 units.
-// SPEED_FAST in m25_parking.py is ~250.  100 % -> 250 raw.
-#define M25_SPEED_SCALE  2.5f
+// Speed scaling: percent (-100..+100, see device_config.h VMAX_*) to M25
+// raw signed int16 units, which the protocol expects in mm/s.
+// Hardware max speed is 10 km/h (VMAX_OUTDOOR=80 -> 8 km/h confirms the
+// 100 %->10 km/h ratio), so 100 % -> 2777.78 mm/s -> scale = 27.7778.
+#define M25_SPEED_SCALE  27.7778f
 
 // Reconnect retry interval
 #define BLE_RECONNECT_DELAY_MS    5000
