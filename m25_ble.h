@@ -127,6 +127,12 @@ static const uint8_t M25_ASSIST_LEVEL_MAP[ASSIST_COUNT] = { 0, 1, 2 };
 // 100 %->10 km/h ratio), so 100 % -> 2777.78 mm/s -> scale = 27.7778.
 #define M25_SPEED_SCALE  27.7778f
 
+// Hard safety ceiling: never command more than 8.5 km/h (legal limit for
+// this vehicle class), regardless of assist level or pct value. This is
+// independent of M25_SPEED_SCALE so a future scale/config change cannot
+// silently exceed it. 8.5 km/h = 2361.11 mm/s; rounded down to stay under.
+#define M25_MAX_SPEED_MMPS  2361
+
 // Reconnect retry interval
 #define BLE_RECONNECT_DELAY_MS    5000
 // Stop auto-reconnect after this many consecutive failures per wheel

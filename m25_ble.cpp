@@ -2413,7 +2413,8 @@ static void _bleMotorTask(void* /*pv*/) {
             }
             else {
                 float   pct = (i == WHEEL_LEFT) ? -cmd.left : cmd.right;
-                int16_t raw = (int16_t)constrain(pct * M25_SPEED_SCALE, -32768.0f, 32767.0f);
+                int16_t raw = (int16_t)constrain(pct * M25_SPEED_SCALE,
+                    -(float)M25_MAX_SPEED_MMPS, (float)M25_MAX_SPEED_MMPS);
                 spd[0] = (uint8_t)((raw >> 8) & 0xFF);
                 spd[1] = (uint8_t)(raw & 0xFF);
             }
@@ -2531,7 +2532,8 @@ bool bleSendMotorCommand(float leftPercent, float rightPercent) {
             continue;
         }
         float   pct = (i == WHEEL_LEFT) ? -leftPercent : rightPercent;
-        int16_t raw = (int16_t)constrain(pct * M25_SPEED_SCALE, -32768.0f, 32767.0f);
+        int16_t raw = (int16_t)constrain(pct * M25_SPEED_SCALE,
+            -(float)M25_MAX_SPEED_MMPS, (float)M25_MAX_SPEED_MMPS);
         uint8_t spd[2] = { (uint8_t)((raw >> 8) & 0xFF), (uint8_t)(raw & 0xFF) };
         ok &= _sendCommand(i, M25_SRV_APP_MGMT, M25_PARAM_WRITE_REMOTE_SPEED, spd, 2);
     }
