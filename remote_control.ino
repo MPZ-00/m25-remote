@@ -358,6 +358,20 @@ void setup() {
         }
     }
 
+    // Load persisted drive-feel tunables (only applied if NVS has a value for each).
+    {
+        float savedCurve = 0.0f, savedRamp = 0.0f, savedTurnRed = 0.0f;
+        bool changed = false;
+        if (nvsLoadCurve(&savedCurve)) { mapperConfig.curve = savedCurve; changed = true; }
+        if (nvsLoadRampRate(&savedRamp)) { mapperConfig.rampRate = savedRamp; changed = true; }
+        if (nvsLoadTurnReduction(&savedTurnRed)) { mapperConfig.turnReduction = savedTurnRed; changed = true; }
+        if (changed) {
+            mapper.setConfig(mapperConfig);
+            LOG_INFO(TAG_BOOT, "Drive feel loaded from NVS: curve=%.2f ramp=%.2f turn=%.2f",
+                mapperConfig.curve, mapperConfig.rampRate, mapperConfig.turnReduction);
+        }
+    }
+
     // Load persisted joystick full-range calibration.
     // Without this, theoretical ADC min/max (0/4095) are used and most joysticks
     // will never reach 1.0 normalized, capping effective speed.

@@ -231,6 +231,10 @@ static void _scPrintHelp() {
     _scCmdOut("--- Control ---");
     _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning  (persisted)");
     _scCmdOut("  speed <0-100>             Set normal-mode max speed % (persisted)  100=full wheel speed");
+    _scCmdOut("  curve <0.1-5.0>           Joystick response curve (persisted)  1.0=linear, >1=softer near center");
+    _scCmdOut("  ramp <0-10>               Max speed change per second (persisted)  0=disabled");
+    _scCmdOut("  turnreduction <0-1>       Inner-wheel turn softening (persisted)  0=none, 1=inner wheel stops");
+    _scCmdOut("  feel [name]               List/apply a speed+curve+ramp+turn preset (persisted): gentle|default|direct");
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
     _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
@@ -381,6 +385,10 @@ static void _scPrintStatus(const SerialContext& ctx) {
             ctx.mapperCfg->maxSpeedNormal,
             ctx.mapperCfg->maxSpeedSlow,
             ctx.mapperCfg->maxSpeedFast);
+        _scCmdOutf("[Feel]     curve=%.2f  ramp=%.2f  turnreduction=%.2f  (or 'feel <name>' for a preset)",
+            ctx.mapperCfg->curve,
+            ctx.mapperCfg->rampRate,
+            ctx.mapperCfg->turnReduction);
     }
 
 #ifdef ENABLE_BATTERY_MONITOR
@@ -576,6 +584,24 @@ static void _scCmdOutf(const char* fmt, ...) {
     _scCmdDecorateMsg(buf, outBuf, sizeof(outBuf));
     Logger::instance().logForced(LogLevel::INFO, _scCmdTagFromMsg(buf), __FILE__, __LINE__, "%s", outBuf);
 }
+
+// ---------------------------------------------------------------------------
+// Drive-feel presets: bundled maxSpeedNormal/curve/rampRate/turnReduction.
+// ---------------------------------------------------------------------------
+struct DriveFeelPreset {
+    const char* name;
+    int         maxSpeedNormal;
+    float       curve;
+    float       rampRate;
+    float       turnReduction;
+};
+
+static const DriveFeelPreset _scFeelPresets[] = {
+    { "gentle",  40, 1.5f, 1.0f, 0.6f },
+    { "default", 60, 1.0f, 0.0f, 0.5f },
+    { "direct",  80, 1.0f, 0.0f, 0.3f },
+};
+static const uint8_t _scFeelPresetCount = sizeof(_scFeelPresets) / sizeof(_scFeelPresets[0]);
 
 // ---------------------------------------------------------------------------
 // Command dispatcher
@@ -818,6 +844,116 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         bool saved = nvsSaveMaxSpeed((uint8_t)val);
         _scCmdOutf("[Speed] Normal mode max speed -> %d%%%s",
             val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        return;
+    }
+
+    // curve [0.1-5.0]  -- show or set the joystick response curve (1.0 = linear)
+    if (strcmp(cmd, "curve") == 0 || strncmp(cmd, "curve ", 6) == 0) {
+        if (!ctx.mapperCfg) {
+            _scCmdOut("curve: mapper config not available");
+            return;
+        }
+        if (strcmp(cmd, "curve") == 0) {
+            _scCmdOutf("[Curve] %.2f  (1.0=linear, >1=softer near center)  Set with: 'curve <0.1-5.0>'",
+                ctx.mapperCfg->curve);
+            return;
+        }
+        float val = atof(cmd + 6);
+        if (val < 0.1f || val > 5.0f) {
+            _scCmdOut("curve: value must be 0.1-5.0");
+            return;
+        }
+        ctx.mapperCfg->curve = val;
+        if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
+        bool saved = nvsSaveCurve(val);
+        _scCmdOutf("[Curve] -> %.2f%s", val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        return;
+    }
+
+    // ramp [0-10]  -- show or set max speed change per second (0 = disabled)
+    if (strcmp(cmd, "ramp") == 0 || strncmp(cmd, "ramp ", 5) == 0) {
+        if (!ctx.mapperCfg) {
+            _scCmdOut("ramp: mapper config not available");
+            return;
+        }
+        if (strcmp(cmd, "ramp") == 0) {
+            _scCmdOutf("[Ramp] %.2f/s  (0=disabled)  Set with: 'ramp <0-10>'", ctx.mapperCfg->rampRate);
+            return;
+        }
+        float val = atof(cmd + 5);
+        if (val < 0.0f || val > 10.0f) {
+            _scCmdOut("ramp: value must be 0-10");
+            return;
+        }
+        ctx.mapperCfg->rampRate = val;
+        if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
+        bool saved = nvsSaveRampRate(val);
+        _scCmdOutf("[Ramp] -> %.2f/s%s", val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        return;
+    }
+
+    // turnreduction [0-1]  -- show or set inner-wheel turn softening
+    if (strcmp(cmd, "turnreduction") == 0 || strncmp(cmd, "turnreduction ", 14) == 0) {
+        if (!ctx.mapperCfg) {
+            _scCmdOut("turnreduction: mapper config not available");
+            return;
+        }
+        if (strcmp(cmd, "turnreduction") == 0) {
+            _scCmdOutf("[TurnReduction] %.2f  (0=no softening, 1=inner wheel stops)  Set with: 'turnreduction <0-1>'",
+                ctx.mapperCfg->turnReduction);
+            return;
+        }
+        float val = atof(cmd + 14);
+        if (val < 0.0f || val > 1.0f) {
+            _scCmdOut("turnreduction: value must be 0-1");
+            return;
+        }
+        ctx.mapperCfg->turnReduction = val;
+        if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
+        bool saved = nvsSaveTurnReduction(val);
+        _scCmdOutf("[TurnReduction] -> %.2f%s", val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        return;
+    }
+
+    // feel [name]  -- apply a bundled speed/curve/ramp/turn preset
+    if (strcmp(cmd, "feel") == 0 || strncmp(cmd, "feel ", 5) == 0) {
+        if (!ctx.mapperCfg) {
+            _scCmdOut("feel: mapper config not available");
+            return;
+        }
+        if (strcmp(cmd, "feel") == 0) {
+            _scCmdOut("[Feel] Presets:");
+            for (uint8_t i = 0; i < _scFeelPresetCount; i++) {
+                const DriveFeelPreset& p = _scFeelPresets[i];
+                _scCmdOutf("  %-8s speed=%d%% curve=%.2f ramp=%.2f turn=%.2f",
+                    p.name, p.maxSpeedNormal, p.curve, p.rampRate, p.turnReduction);
+            }
+            _scCmdOut("[Feel] Apply with: 'feel <name>'  (persists all four values)");
+            return;
+        }
+        const char* name = cmd + 5;
+        const DriveFeelPreset* match = nullptr;
+        for (uint8_t i = 0; i < _scFeelPresetCount; i++) {
+            if (strcmp(_scFeelPresets[i].name, name) == 0) {
+                match = &_scFeelPresets[i];
+                break;
+            }
+        }
+        if (!match) {
+            _scCmdOut("feel: unknown preset - run 'feel' to list options");
+            return;
+        }
+        ctx.mapperCfg->maxSpeedNormal = match->maxSpeedNormal;
+        ctx.mapperCfg->curve = match->curve;
+        ctx.mapperCfg->rampRate = match->rampRate;
+        ctx.mapperCfg->turnReduction = match->turnReduction;
+        if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
+        nvsSaveMaxSpeed((uint8_t)match->maxSpeedNormal);
+        nvsSaveCurve(match->curve);
+        nvsSaveRampRate(match->rampRate);
+        nvsSaveTurnReduction(match->turnReduction);
+        _scCmdOutf("[Feel] -> %s (speed=%d%% curve=%.2f ramp=%.2f turn=%.2f, persisted)",
+            match->name, match->maxSpeedNormal, match->curve, match->rampRate, match->turnReduction);
         return;
     }
 

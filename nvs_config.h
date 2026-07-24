@@ -213,6 +213,63 @@ inline bool nvsLoadMaxSpeed(uint8_t* pct) {
 }
 
 // ---------------------------------------------------------------------------
+// Drive-feel tunables: curve, ramp rate, turn reduction.
+// ---------------------------------------------------------------------------
+inline bool nvsSaveCurve(float v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putFloat("curve", v) == sizeof(float);
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadCurve(float* v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    float val = p.getFloat("curve", -1.0f);
+    p.end();
+    if (val < 0.0f) return false;
+    *v = val;
+    return true;
+}
+
+inline bool nvsSaveRampRate(float v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putFloat("ramp_rate", v) == sizeof(float);
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadRampRate(float* v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    float val = p.getFloat("ramp_rate", -1.0f);
+    p.end();
+    if (val < 0.0f) return false;
+    *v = val;
+    return true;
+}
+
+inline bool nvsSaveTurnReduction(float v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putFloat("turn_red", v) == sizeof(float);
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadTurnReduction(float* v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    float val = p.getFloat("turn_red", -1.0f);
+    p.end();
+    if (val < 0.0f) return false;
+    *v = val;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Wheel mode (WHEEL_MODE_DUAL / LEFT_ONLY / RIGHT_ONLY) - bench testing with
 // a single wheel without reflashing.
 // ---------------------------------------------------------------------------
