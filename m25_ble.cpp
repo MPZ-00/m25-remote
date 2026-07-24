@@ -1471,7 +1471,11 @@ void _notifyCallback(BLERemoteCharacteristic* pChar, uint8_t* pData, size_t leng
 void M25DisconnectCallback::onConnect(BLEClient*) {}
 
 void M25DisconnectCallback::onDisconnect(BLEClient*) {
+    if (_bleTxMutex) xSemaphoreTake(_bleTxMutex, pdMS_TO_TICKS(200));
+
     _wheels[wheelIdx].connected = false;
+    _wheels[wheelIdx].rxChar = nullptr;
+    _wheels[wheelIdx].txChar = nullptr;
     _wheels[wheelIdx].protocolReady = false;
     _wheels[wheelIdx].driveModeBits = 0;
     _wheels[wheelIdx].lastDriveModeWriteMs = 0;
@@ -1480,6 +1484,8 @@ void M25DisconnectCallback::onDisconnect(BLEClient*) {
     _wheels[wheelIdx].driveModeReadbackValid = false;
     _wheels[wheelIdx].txFailStreak = 0;
     _wheels[wheelIdx].lastTxFailMs = 0;
+
+    if (_bleTxMutex) xSemaphoreGive(_bleTxMutex);
 
     // Only print message for active wheels (respect WHEEL_MODE)
     if (_wheelActive(wheelIdx)) {
