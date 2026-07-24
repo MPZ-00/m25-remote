@@ -194,6 +194,24 @@ static void _scCmdOut(const char* msg);
 static void _scCmdOutf(const char* fmt, ...);
 
 // ---------------------------------------------------------------------------
+// Speed percent <-> km/h, derived from M25_SPEED_SCALE / M25_MAX_SPEED_MMPS.
+// ---------------------------------------------------------------------------
+static const float _scKmhPerPct = (float)(M25_SPEED_SCALE * 0.0036f);
+static const float _scMaxKmh = (float)(M25_MAX_SPEED_MMPS * 0.0036f);
+
+static float _scPctToKmh(int pct) {
+    float kmh = pct * _scKmhPerPct;
+    return (kmh > _scMaxKmh) ? _scMaxKmh : kmh;
+}
+
+static int _scKmhToPct(float kmh) {
+    int pct = (int)roundf(kmh / _scKmhPerPct);
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    return pct;
+}
+
+// ---------------------------------------------------------------------------
 // Internal print helpers
 // ---------------------------------------------------------------------------
 static void _scPrintHelp() {
@@ -230,11 +248,11 @@ static void _scPrintHelp() {
     _scCmdOut("  setkey <left|right> <hex> Change AES key (32 hex chars)");
     _scCmdOut("--- Control ---");
     _scCmdOut("  assist <0|1|2>            Set assist level  0=indoor  1=outdoor  2=learning  (persisted)");
-    _scCmdOut("  speed <0-100>             Set normal-mode max speed % (persisted)  100=full wheel speed");
+    _scCmdOut("  speed <2.0-8.5>           Set normal-mode max speed in km/h (persisted)  8.5=legal max");
     _scCmdOut("  curve <0.1-5.0>           Joystick response curve (persisted)  1.0=linear, >1=softer near center");
-    _scCmdOut("  ramp <0-10>               Max speed change per second (persisted)  0=disabled");
+    _scCmdOut("  ramp <0-1000>             Max speed change per second, in speed-percent (persisted)  0=disabled");
     _scCmdOut("  turnreduction <0-1>       Inner-wheel turn softening (persisted)  0=none, 1=inner wheel stops");
-    _scCmdOut("  feel [name]               List/apply a speed+curve+ramp+turn preset (persisted): gentle|default|direct");
+    _scCmdOut("  feel [name]               List (with current values) or apply a preset, showing the diff: learning|indoor|outdoor");
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
     _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
@@ -381,11 +399,11 @@ static void _scPrintStatus(const SerialContext& ctx) {
         assistConfigs[*ctx.assistLevel].name,
         *ctx.hillHoldOn ? "ON" : "off");
     if (ctx.mapperCfg) {
-        _scCmdOutf("[Speed]    Normal=%d%%  Slow=%d%%  Fast=%d%%  (use 'speed <0-100>' to change normal)",
-            ctx.mapperCfg->maxSpeedNormal,
-            ctx.mapperCfg->maxSpeedSlow,
-            ctx.mapperCfg->maxSpeedFast);
-        _scCmdOutf("[Feel]     curve=%.2f  ramp=%.2f  turnreduction=%.2f  (or 'feel <name>' for a preset)",
+        _scCmdOutf("[Speed]    Normal=%.1f km/h  Slow=%.1f km/h  Fast=%.1f km/h  (use 'speed <2.0-8.5>' to change normal)",
+            _scPctToKmh(ctx.mapperCfg->maxSpeedNormal),
+            _scPctToKmh(ctx.mapperCfg->maxSpeedSlow),
+            _scPctToKmh(ctx.mapperCfg->maxSpeedFast));
+        _scCmdOutf("[Feel]     curve=%.2f  ramp=%.2f%%/s  turnreduction=%.2f  (or 'feel <name>' for a preset)",
             ctx.mapperCfg->curve,
             ctx.mapperCfg->rampRate,
             ctx.mapperCfg->turnReduction);
@@ -597,9 +615,9 @@ struct DriveFeelPreset {
 };
 
 static const DriveFeelPreset _scFeelPresets[] = {
-    { "gentle",  40, 1.5f, 1.0f, 0.6f },
-    { "default", 60, 1.0f, 0.0f, 0.5f },
-    { "direct",  80, 1.0f, 0.0f, 0.3f },
+    { "learning", 40, 1.5f, 150.0f, 0.6f },
+    { "indoor",   60, 1.0f, 0.0f, 0.5f },
+    { "outdoor",  80, 1.0f, 0.0f, 0.3f },
 };
 static const uint8_t _scFeelPresetCount = sizeof(_scFeelPresets) / sizeof(_scFeelPresets[0]);
 
@@ -813,37 +831,38 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         return;
     }
 
-    // speed [0-100]  -- show or set normal-mode max speed percentage
+    // speed [2.0-8.5]  -- show or set normal-mode max speed in km/h
     if (strcmp(cmd, "speed") == 0 || strncmp(cmd, "speed ", 6) == 0) {
         if (!ctx.mapperCfg) {
             _scCmdOut("speed: mapper config not available");
             return;
         }
         if (strcmp(cmd, "speed") == 0) {
-            _scCmdOutf("[Speed] Normal=%d%%  Slow=%d%%  Fast=%d%%",
-                ctx.mapperCfg->maxSpeedNormal,
-                ctx.mapperCfg->maxSpeedSlow,
-                ctx.mapperCfg->maxSpeedFast);
+            _scCmdOutf("[Speed] Normal=%.1f km/h  Slow=%.1f km/h  Fast=%.1f km/h",
+                _scPctToKmh(ctx.mapperCfg->maxSpeedNormal),
+                _scPctToKmh(ctx.mapperCfg->maxSpeedSlow),
+                _scPctToKmh(ctx.mapperCfg->maxSpeedFast));
             if (ctx.mapper && ctx.mapper->isLowBatteryLimited()) {
-                _scCmdOutf("[Speed] LOW BATTERY - all modes capped to %d%%",
-                    ctx.mapperCfg->maxSpeedLowBattery);
+                _scCmdOutf("[Speed] LOW BATTERY - all modes capped to %.1f km/h",
+                    _scPctToKmh(ctx.mapperCfg->maxSpeedLowBattery));
             }
-            _scCmdOut("[Speed] Set with: 'speed <0-100>'  (normal mode, persisted)");
+            _scCmdOut("[Speed] Set with: 'speed <2.0-8.5>'  (km/h, normal mode, persisted)");
             return;
         }
         const char* arg = cmd + 6;
-        int val = atoi(arg);
-        if (val < 0 || val > 100) {
-            _scCmdOut("speed: value must be 0-100");
+        float kmh = atof(arg);
+        if (kmh < 2.0f || kmh > 8.5f) {
+            _scCmdOut("speed: value must be 2.0-8.5 km/h");
             return;
         }
+        int val = _scKmhToPct(kmh);
         ctx.mapperCfg->maxSpeedNormal = val;
         // Mapper copied the config at construction; push the change through
         // or the new limit never takes effect.
         if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
         bool saved = nvsSaveMaxSpeed((uint8_t)val);
-        _scCmdOutf("[Speed] Normal mode max speed -> %d%%%s",
-            val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        _scCmdOutf("[Speed] Normal mode max speed -> %.1f km/h%s",
+            _scPctToKmh(val), saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
         return;
     }
 
@@ -870,25 +889,25 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         return;
     }
 
-    // ramp [0-10]  -- show or set max speed change per second (0 = disabled)
+    // ramp [0-1000]  -- show or set max speed-percent change per second (0 = disabled)
     if (strcmp(cmd, "ramp") == 0 || strncmp(cmd, "ramp ", 5) == 0) {
         if (!ctx.mapperCfg) {
             _scCmdOut("ramp: mapper config not available");
             return;
         }
         if (strcmp(cmd, "ramp") == 0) {
-            _scCmdOutf("[Ramp] %.2f/s  (0=disabled)  Set with: 'ramp <0-10>'", ctx.mapperCfg->rampRate);
+            _scCmdOutf("[Ramp] %.2f%%/s  (0=disabled)  Set with: 'ramp <0-1000>'", ctx.mapperCfg->rampRate);
             return;
         }
         float val = atof(cmd + 5);
-        if (val < 0.0f || val > 10.0f) {
-            _scCmdOut("ramp: value must be 0-10");
+        if (val < 0.0f || val > 1000.0f) {
+            _scCmdOut("ramp: value must be 0-1000");
             return;
         }
         ctx.mapperCfg->rampRate = val;
         if (ctx.mapper) ctx.mapper->setConfig(*ctx.mapperCfg);
         bool saved = nvsSaveRampRate(val);
-        _scCmdOutf("[Ramp] -> %.2f/s%s", val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
+        _scCmdOutf("[Ramp] -> %.2f%%/s%s", val, saved ? "  (persisted to NVS)" : "  (NVS save failed - runtime only)");
         return;
     }
 
@@ -922,13 +941,16 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             return;
         }
         if (strcmp(cmd, "feel") == 0) {
+            _scCmdOutf("[Feel] Current: speed=%.1f km/h curve=%.2f ramp=%.2f%%/s turn=%.2f",
+                _scPctToKmh(ctx.mapperCfg->maxSpeedNormal), ctx.mapperCfg->curve,
+                ctx.mapperCfg->rampRate, ctx.mapperCfg->turnReduction);
             _scCmdOut("[Feel] Presets:");
             for (uint8_t i = 0; i < _scFeelPresetCount; i++) {
                 const DriveFeelPreset& p = _scFeelPresets[i];
-                _scCmdOutf("  %-8s speed=%d%% curve=%.2f ramp=%.2f turn=%.2f",
-                    p.name, p.maxSpeedNormal, p.curve, p.rampRate, p.turnReduction);
+                _scCmdOutf("  %-8s speed=%.1f km/h curve=%.2f ramp=%.2f%%/s turn=%.2f",
+                    p.name, _scPctToKmh(p.maxSpeedNormal), p.curve, p.rampRate, p.turnReduction);
             }
-            _scCmdOut("[Feel] Apply with: 'feel <name>'  (persists all four values)");
+            _scCmdOut("[Feel] Apply with: 'feel <name>'  (persists all four values, shows what changes)");
             return;
         }
         const char* name = cmd + 5;
@@ -943,6 +965,19 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             _scCmdOut("feel: unknown preset - run 'feel' to list options");
             return;
         }
+        // Diff against live config before overwriting it.
+        float oldKmh = _scPctToKmh(ctx.mapperCfg->maxSpeedNormal);
+        float newKmh = _scPctToKmh(match->maxSpeedNormal);
+        _scCmdOutf("[Feel] -> %s", match->name);
+        _scCmdOutf("  speed          %.1f -> %.1f km/h%s", oldKmh, newKmh,
+            (oldKmh == newKmh) ? "  (unchanged)" : "");
+        _scCmdOutf("  curve          %.2f -> %.2f%s", ctx.mapperCfg->curve, match->curve,
+            (ctx.mapperCfg->curve == match->curve) ? "  (unchanged)" : "");
+        _scCmdOutf("  ramp           %.2f -> %.2f%%/s%s", ctx.mapperCfg->rampRate, match->rampRate,
+            (ctx.mapperCfg->rampRate == match->rampRate) ? "  (unchanged)" : "");
+        _scCmdOutf("  turnreduction  %.2f -> %.2f%s", ctx.mapperCfg->turnReduction, match->turnReduction,
+            (ctx.mapperCfg->turnReduction == match->turnReduction) ? "  (unchanged)" : "");
+
         ctx.mapperCfg->maxSpeedNormal = match->maxSpeedNormal;
         ctx.mapperCfg->curve = match->curve;
         ctx.mapperCfg->rampRate = match->rampRate;
@@ -952,8 +987,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         nvsSaveCurve(match->curve);
         nvsSaveRampRate(match->rampRate);
         nvsSaveTurnReduction(match->turnReduction);
-        _scCmdOutf("[Feel] -> %s (speed=%d%% curve=%.2f ramp=%.2f turn=%.2f, persisted)",
-            match->name, match->maxSpeedNormal, match->curve, match->rampRate, match->turnReduction);
+        _scCmdOut("[Feel] Applied and persisted to NVS.");
         return;
     }
 
