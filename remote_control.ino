@@ -408,7 +408,7 @@ void loop() {
 
     ControlState control;
     control.vx = js.y;
-    control.vy = js.x;
+    control.vy = -js.x;
 #ifdef NO_DEADMAN_HARDWARE
     control.deadman = true;   // no hardware button - always engaged
 #else
