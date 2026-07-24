@@ -510,7 +510,7 @@ void loop() {
     }
 
     if (assistPressed) {
-        if (supState == SUPERVISOR_PAIRED || supState == SUPERVISOR_ARMED) {
+        if (supState == SUPERVISOR_PAIRED) {
             assistLevel = (assistLevel + 1) % ASSIST_COUNT;
             nvsSaveAssistLevel(assistLevel);
             ledSetAssistLevel(assistLevel);
@@ -520,9 +520,31 @@ void loop() {
                 assistConfigs[assistLevel].name,
                 assistConfigs[assistLevel].vmaxForward);
         }
-        else if (supState == SUPERVISOR_DRIVING) {
-            buzzerPlay(BUZZ_WARNING);
-            LOG_WARN(TAG_BUTTON, "Assist ignored - motors active, stop first");
+        else if (supState == SUPERVISOR_ARMED || supState == SUPERVISOR_DRIVING) {
+            int currentIdx = -1;
+            for (uint8_t i = 0; i < _scFeelPresetCount; i++) {
+                const DriveFeelPreset& p = _scFeelPresets[i];
+                if (p.maxSpeedNormal == mapperConfig.maxSpeedNormal
+                    && p.curve == mapperConfig.curve
+                    && p.rampRate == mapperConfig.rampRate
+                    && p.turnReduction == mapperConfig.turnReduction) {
+                    currentIdx = i;
+                    break;
+                }
+            }
+            uint8_t nextIdx = (uint8_t)((currentIdx + 1) % _scFeelPresetCount);
+            const DriveFeelPreset& next = _scFeelPresets[nextIdx];
+            mapperConfig.maxSpeedNormal = next.maxSpeedNormal;
+            mapperConfig.curve = next.curve;
+            mapperConfig.rampRate = next.rampRate;
+            mapperConfig.turnReduction = next.turnReduction;
+            mapper.setConfig(mapperConfig);
+            nvsSaveMaxSpeed((uint8_t)next.maxSpeedNormal);
+            nvsSaveCurve(next.curve);
+            nvsSaveRampRate(next.rampRate);
+            nvsSaveTurnReduction(next.turnReduction);
+            buzzerPlay(BUZZ_CONFIRM);
+            LOG_INFO(TAG_BUTTON, "Feel -> %s", next.name);
         }
         else {
             LOG_WARN(TAG_BUTTON, "Assist ignored - not connected");
