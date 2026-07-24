@@ -150,27 +150,27 @@ inline bool nvsSaveAssistLevel(uint8_t level) {
 }
 
 // ---------------------------------------------------------------------------
-// Active profile: remembers which named profile was last applied via
-// 'config profile <env|default>'.  Empty string means not yet set.
+// Active credential source: remembers which source was last applied via
+// 'config source <env|default>'.  Empty string means not yet set.
 // ---------------------------------------------------------------------------
-inline bool nvsSaveActiveProfile(const char* profileName) {
+inline bool nvsSaveActiveSource(const char* sourceName) {
     Preferences p;
     if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
-    bool ok = p.putString("active_prof", profileName) > 0;
+    bool ok = p.putString("active_src", sourceName) > 0;
     p.end();
     return ok;
 }
 
-// Fills buf with the profile name ("env", "default", or "" if unset).
+// Fills buf with the source name ("env", "default", or "" if unset).
 // Returns true if a value was found in NVS.
-inline bool nvsLoadActiveProfile(char* buf, size_t bufLen) {
+inline bool nvsLoadActiveSource(char* buf, size_t bufLen) {
     if (!buf || bufLen == 0) return false;
     Preferences p;
     if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) {
         buf[0] = '\0';
         return false;
     }
-    String val = p.getString("active_prof", "");
+    String val = p.getString("active_src", "");
     p.end();
     strlcpy(buf, val.c_str(), bufLen);
     return val.length() > 0;

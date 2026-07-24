@@ -178,17 +178,17 @@ static const char* const _stateNames[] = {
     "BOOT", "CONNECTING", "READY", "OPERATING", "ERROR", "OFF"
 };
 
-static const bool _scProfileEnvAvailable = (ENV_PROFILE_AVAILABLE != 0);
-static const char _scProfileEnvLeftMac[] = ENV_LEFT_WHEEL_MAC;
-static const char _scProfileEnvRightMac[] = ENV_RIGHT_WHEEL_MAC;
-static const uint8_t _scProfileEnvLeftKey[16] = ENV_ENCRYPTION_KEY_LEFT;
-static const uint8_t _scProfileEnvRightKey[16] = ENV_ENCRYPTION_KEY_RIGHT;
+static const bool _scSourceEnvAvailable = (ENV_PROFILE_AVAILABLE != 0);
+static const char _scSourceEnvLeftMac[] = ENV_LEFT_WHEEL_MAC;
+static const char _scSourceEnvRightMac[] = ENV_RIGHT_WHEEL_MAC;
+static const uint8_t _scSourceEnvLeftKey[16] = ENV_ENCRYPTION_KEY_LEFT;
+static const uint8_t _scSourceEnvRightKey[16] = ENV_ENCRYPTION_KEY_RIGHT;
 
-// Default profile: the build-time values from device_config.h (unchanged by load_env.py)
-static const char _scProfileDefaultLeftMac[] = LEFT_WHEEL_MAC;
-static const char _scProfileDefaultRightMac[] = RIGHT_WHEEL_MAC;
-static const uint8_t _scProfileDefaultLeftKey[16] = ENCRYPTION_KEY_LEFT;
-static const uint8_t _scProfileDefaultRightKey[16] = ENCRYPTION_KEY_RIGHT;
+// Default source: the build-time values from device_config.h (unchanged by load_env.py)
+static const char _scSourceDefaultLeftMac[] = LEFT_WHEEL_MAC;
+static const char _scSourceDefaultRightMac[] = RIGHT_WHEEL_MAC;
+static const uint8_t _scSourceDefaultLeftKey[16] = ENCRYPTION_KEY_LEFT;
+static const uint8_t _scSourceDefaultRightKey[16] = ENCRYPTION_KEY_RIGHT;
 
 static void _scCmdOut(const char* msg);
 static void _scCmdOutf(const char* fmt, ...);
@@ -247,7 +247,7 @@ static void _scPrintHelp() {
     _scCmdOut("--- Config (NVS) ---");
     _scCmdOut("  config show               Print MACs, masked keys, assist level (NVS vs build default)");
     _scCmdOut("  config reset              Clear NVS; build defaults on next boot");
-    _scCmdOut("  config profile <env|default> Persist+apply profile now, then reconnect");
+    _scCmdOut("  config source <env|default>  Persist+apply credential source now, then reconnect");
     _scCmdOut("                               env requires build-time .env values");
     _scCmdOut("--- System ---");
     _scCmdOut("  power off                 Turn device off (enter deep sleep)");
@@ -517,7 +517,7 @@ static bool _scParseHex16(const char* hex, uint8_t* out) {
     return true;
 }
 
-static void _scApplyProfile(const char* lmac, const char* rmac,
+static void _scApplySource(const char* lmac, const char* rmac,
     const uint8_t* lkey, const uint8_t* rkey,
     const SerialContext& ctx) {
     bleSetMac(WHEEL_LEFT, lmac);
@@ -1466,7 +1466,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         return;
     }
 
-    // config show / config reset / config profile <env|default>
+    // config show / config reset / config source <env|default>
     if (strncmp(cmd, "config", 6) == 0) {
         const char* arg = cmd + 6;
         while (*arg == ' ') arg++;
@@ -1482,16 +1482,16 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             bool assistNvs = nvsLoadAssistLevel(&nvsAssist);
 
             // Resolve active value per setting: NVS > env > default
-            const char*    activeLmac  = lmacNvs  ? nvsLmac  : (_scProfileEnvAvailable ? _scProfileEnvLeftMac   : _scProfileDefaultLeftMac);
-            const char*    activeRmac  = rmacNvs  ? nvsRmac  : (_scProfileEnvAvailable ? _scProfileEnvRightMac  : _scProfileDefaultRightMac);
-            const uint8_t* activeLkey  = lkeyNvs  ? nvsLkey  : (_scProfileEnvAvailable ? _scProfileEnvLeftKey   : _scProfileDefaultLeftKey);
-            const uint8_t* activeRkey  = rkeyNvs  ? nvsRkey  : (_scProfileEnvAvailable ? _scProfileEnvRightKey  : _scProfileDefaultRightKey);
+            const char*    activeLmac  = lmacNvs  ? nvsLmac  : (_scSourceEnvAvailable ? _scSourceEnvLeftMac   : _scSourceDefaultLeftMac);
+            const char*    activeRmac  = rmacNvs  ? nvsRmac  : (_scSourceEnvAvailable ? _scSourceEnvRightMac  : _scSourceDefaultRightMac);
+            const uint8_t* activeLkey  = lkeyNvs  ? nvsLkey  : (_scSourceEnvAvailable ? _scSourceEnvLeftKey   : _scSourceDefaultLeftKey);
+            const uint8_t* activeRkey  = rkeyNvs  ? nvsRkey  : (_scSourceEnvAvailable ? _scSourceEnvRightKey  : _scSourceDefaultRightKey);
             uint8_t        activeAssist = assistNvs ? nvsAssist : (ctx.assistLevel ? *ctx.assistLevel : 0);
 
-            const char* lmacSrc   = lmacNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
-            const char* rmacSrc   = rmacNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
-            const char* lkeySrc   = lkeyNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
-            const char* rkeySrc   = rkeyNvs   ? "NVS" : (_scProfileEnvAvailable ? "env" : "default");
+            const char* lmacSrc   = lmacNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
+            const char* rmacSrc   = rmacNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
+            const char* lkeySrc   = lkeyNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
+            const char* rkeySrc   = rkeyNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
             const char* assistSrc = assistNvs ? "NVS" : "default";
 
             // Masked keys: reveal only first/last 2 bytes so serial logs can't
@@ -1503,81 +1503,81 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 activeRkey[0], activeRkey[1], activeRkey[14], activeRkey[15]);
             const char* assistName = (activeAssist < ASSIST_COUNT) ? assistConfigs[activeAssist].name : "?";
 
-            // Determine selected profile: explicitly saved name, or derived from sources
-            char activeProfileName[16] = {0};
-            bool profSaved = nvsLoadActiveProfile(activeProfileName, sizeof(activeProfileName));
-            const char* selectedProfile;
-            if (profSaved && activeProfileName[0] != '\0') {
-                selectedProfile = activeProfileName;
+            // Determine active source: explicitly saved name, or derived from sources
+            char activeSourceName[16] = {0};
+            bool srcSaved = nvsLoadActiveSource(activeSourceName, sizeof(activeSourceName));
+            const char* activeSource;
+            if (srcSaved && activeSourceName[0] != '\0') {
+                activeSource = activeSourceName;
             }
             else if (!lmacNvs && !rmacNvs && !lkeyNvs && !rkeyNvs) {
-                selectedProfile = _scProfileEnvAvailable ? "env (fallback)" : "default";
+                activeSource = _scSourceEnvAvailable ? "env (fallback)" : "default";
             }
             else {
-                selectedProfile = "custom (NVS override)";
+                activeSource = "custom (NVS override)";
             }
 
-            _scCmdOut("[Config] --- Active Profile ---");
-            _scCmdOutf("[Config] Selected   : %s", selectedProfile);
+            _scCmdOut("[Config] --- Active Credential Source ---");
+            _scCmdOutf("[Config] Selected   : %s", activeSource);
             _scCmdOutf("[Config] Left  MAC  : %-17s  [%s]", activeLmac,  lmacSrc);
             _scCmdOutf("[Config] Right MAC  : %-17s  [%s]", activeRmac,  rmacSrc);
             _scCmdOutf("[Config] Left  Key  : %s  [%s]", lkeyHex, lkeySrc);
             _scCmdOutf("[Config] Right Key  : %s  [%s]", rkeyHex, rkeySrc);
             _scCmdOutf("[Config] Assist     : %s (%u)  [%s]", assistName, activeAssist, assistSrc);
             _scCmdOutf("[Config] Available  : env=%s  default=YES",
-                _scProfileEnvAvailable ? "YES" : "no");
-            _scCmdOut("[Config] Switch     : 'config profile <env|default>'");
+                _scSourceEnvAvailable ? "YES" : "no");
+            _scCmdOut("[Config] Switch     : 'config source <env|default>'");
         }
-        else if (strncmp(arg, "profile ", 8) == 0) {
-            const char* profile = arg + 8;
-            while (*profile == ' ') profile++;
+        else if (strncmp(arg, "source ", 7) == 0) {
+            const char* source = arg + 7;
+            while (*source == ' ') source++;
 
             if (*ctx.state == STATE_OPERATING) {
-                _scCmdOut("[Config] profile: stop motors first");
+                _scCmdOut("[Config] source: stop motors first");
                 return;
             }
 
-            if (strcmp(profile, "env") == 0) {
-                if (!_scProfileEnvAvailable) {
-                    _scCmdOut("[Config] Profile 'env' is not available in this build.");
+            if (strcmp(source, "env") == 0) {
+                if (!_scSourceEnvAvailable) {
+                    _scCmdOut("[Config] Source 'env' is not available in this build.");
                     _scCmdOut("[Config] Provide M25_* values in .env and rebuild.");
                     return;
                 }
 
                 bool ok = true;
-                ok &= nvsSaveMac(WHEEL_LEFT, _scProfileEnvLeftMac);
-                ok &= nvsSaveMac(WHEEL_RIGHT, _scProfileEnvRightMac);
-                ok &= nvsSaveKey(WHEEL_LEFT, _scProfileEnvLeftKey);
-                ok &= nvsSaveKey(WHEEL_RIGHT, _scProfileEnvRightKey);
-                nvsSaveActiveProfile("env");
+                ok &= nvsSaveMac(WHEEL_LEFT, _scSourceEnvLeftMac);
+                ok &= nvsSaveMac(WHEEL_RIGHT, _scSourceEnvRightMac);
+                ok &= nvsSaveKey(WHEEL_LEFT, _scSourceEnvLeftKey);
+                ok &= nvsSaveKey(WHEEL_RIGHT, _scSourceEnvRightKey);
+                nvsSaveActiveSource("env");
 
-                _scApplyProfile(
-                    _scProfileEnvLeftMac, _scProfileEnvRightMac,
-                    _scProfileEnvLeftKey, _scProfileEnvRightKey,
+                _scApplySource(
+                    _scSourceEnvLeftMac, _scSourceEnvRightMac,
+                    _scSourceEnvLeftKey, _scSourceEnvRightKey,
                     ctx
                 );
 
                 if (ok) {
-                    _scCmdOut("[Config] Profile 'env': saved to NVS and applied.");
+                    _scCmdOut("[Config] Source 'env': saved to NVS and applied.");
                 }
                 else {
-                    _scCmdOut("[Config] Profile 'env': applied, but NVS save failed (runtime-only).");
+                    _scCmdOut("[Config] Source 'env': applied, but NVS save failed (runtime-only).");
                 }
                 _scCmdOut("[Config] Reconnect requested.");
             }
-            else if (strcmp(profile, "default") == 0) {
+            else if (strcmp(source, "default") == 0) {
                 nvsClearAll();
-                nvsSaveActiveProfile("default");
-                _scApplyProfile(
-                    _scProfileDefaultLeftMac, _scProfileDefaultRightMac,
-                    _scProfileDefaultLeftKey, _scProfileDefaultRightKey,
+                nvsSaveActiveSource("default");
+                _scApplySource(
+                    _scSourceDefaultLeftMac, _scSourceDefaultRightMac,
+                    _scSourceDefaultLeftKey, _scSourceDefaultRightKey,
                     ctx
                 );
-                _scCmdOut("[Config] Profile 'default': NVS cleared, build defaults applied.");
+                _scCmdOut("[Config] Source 'default': NVS cleared, build defaults applied.");
                 _scCmdOut("[Config] Reconnect requested.");
             }
             else {
-                _scCmdOut("config profile: use 'env' or 'default'");
+                _scCmdOut("config source: use 'env' or 'default'");
             }
         }
         else if (strcmp(arg, "reset") == 0) {
@@ -1586,7 +1586,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             _scCmdOut("[Config] Restart to apply ('restart' command).");
         }
         else {
-            _scCmdOut("config: use 'config show', 'config reset', or 'config profile <env|default>'");
+            _scCmdOut("config: use 'config show', 'config reset', or 'config source <env|default>'");
         }
         return;
     }
