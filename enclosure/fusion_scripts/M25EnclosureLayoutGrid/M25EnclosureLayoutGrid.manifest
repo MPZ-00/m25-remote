@@ -1,0 +1,10 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "script",
+    "author": "MPZ-00",
+    "description": {
+        "": "Variant A (2x2 button cluster, 125x85x70mm) of the m25-remote enclosure layout sketches. Kept for comparison against the row layout - superseded after dev feedback that the cluster felt crowded, but 10mm narrower and worth keeping as a reference. Builds into a new Fusion document by default (NEW_DOCUMENT flag)."
+    },
+    "editEnabled": true,
+    "supportedOS": "windows|mac"
+}

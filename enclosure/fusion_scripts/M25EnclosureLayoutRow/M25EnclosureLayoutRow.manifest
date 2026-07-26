@@ -1,0 +1,10 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "script",
+    "author": "MPZ-00",
+    "description": {
+        "": "Variant B (single button row, 135x85x70mm) of the m25-remote enclosure layout sketches - current preferred layout after dev feedback on the grid variant. Row of 4 buttons across the top (E-stop and Power deliberately at opposite ends), joystick centered below, LED column on the left, right pocket reserved for a future display. Builds into a new Fusion document by default (NEW_DOCUMENT flag)."
+    },
+    "editEnabled": true,
+    "supportedOS": "windows|mac"
+}
