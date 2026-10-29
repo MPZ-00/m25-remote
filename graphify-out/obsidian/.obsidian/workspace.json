@@ -16,8 +16,8 @@
               "state": {
                 "file": "graph.canvas",
                 "viewState": {
-                  "x": 1012.3329021437492,
-                  "y": 3819.269753296564,
+                  "x": 1936.332902143749,
+                  "y": 1909.269753296564,
                   "zoom": -0.9999999999999998
                 }
               },
@@ -51,9 +51,18 @@
               "icon": "lucide-file",
               "title": "_COMMUNITY_Configuration Priority & Feature Flags"
             }
+          },
+          {
+            "id": "e47c76a96d51da8a",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -73,7 +82,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -212,8 +223,10 @@
       "bases:Create new base": false
     }
   },
-  "active": "dbd685c3c88c857e",
+  "active": "13d8d63dfb27ae80",
   "lastOpenFiles": [
+    "m25_ble.cpp.md",
+    "ResponseData.md",
     "graph.canvas",
     "_COMMUNITY_Configuration Priority & Feature Flags.md",
     "x.md"
