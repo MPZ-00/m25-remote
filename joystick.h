@@ -31,6 +31,9 @@ inline bool joystickRecalibrate() {
 inline int  joystickReadRawAxis(uint8_t) { return JOYSTICK_CENTER; }
 struct JoystickRaw { int x = JOYSTICK_CENTER; int y = JOYSTICK_CENTER; };
 inline bool joystickRawNearExpectedCenter(const JoystickRaw&) { return true; }
+inline bool joystickHasRangeCalibration() { return true; }
+inline void joystickSetDeadzonePct(uint8_t) {}
+inline uint8_t joystickGetDeadzonePct() { return JOYSTICK_DEADZONE_PCT; }
 struct JoystickNorm { float x = 0.0f; float y = 0.0f; bool inDeadzone = true; };
 inline const char* joystickDirectionLabel(float, float) { return "CENTER"; }
 inline JoystickRaw  joystickReadRaw() { return { JOYSTICK_CENTER, JOYSTICK_CENTER }; }
@@ -66,6 +69,11 @@ static int _jsXMax = JOYSTICK_ADC_MAX;
 static int _jsYMin = JOYSTICK_ADC_MIN;
 static int _jsYMax = JOYSTICK_ADC_MAX;
 static bool _jsRangeCalibrated = false;
+static uint8_t _jsDeadzonePct = JOYSTICK_DEADZONE_PCT;
+
+inline bool joystickHasRangeCalibration() { return _jsRangeCalibrated; }
+inline uint8_t joystickGetDeadzonePct() { return _jsDeadzonePct; }
+inline void joystickSetDeadzonePct(uint8_t pct) { _jsDeadzonePct = pct; }
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -161,23 +169,29 @@ inline JoystickRaw joystickReadRaw() {
 // (or the theoretical 0/4095 before calibration is done).
 // Returns 0.0 if within deadzone.
 // ---------------------------------------------------------------------------
+inline int _jsSideDeadzone(int travel) {
+    int dz = travel * _jsDeadzonePct / 100;
+    return (dz < JOYSTICK_DEADZONE_MIN_COUNTS) ? JOYSTICK_DEADZONE_MIN_COUNTS : dz;
+}
+
 inline float joystickNormalizeAxis(int raw, int center, int adcMin, int adcMax) {
     int offset = raw - center;
 
-    if (abs(offset) <= JOYSTICK_DEADZONE) {
-        return 0.0f;
-    }
-
     // Remap outside deadzone to full [-1, +1] using measured endpoints.
+    // Per-side deadzone: the rest center is rarely mid-range.
     float usable;
     if (offset > 0) {
-        int edgePos = center + JOYSTICK_DEADZONE;
+        int dz = _jsSideDeadzone(adcMax - center);
+        if (offset <= dz) return 0.0f;
+        int edgePos = center + dz;
         int rangePos = adcMax - edgePos;
         if (rangePos <= 0) return 1.0f;
         usable = (float)(raw - edgePos) / (float)rangePos;
     }
     else {
-        int edgeNeg = center - JOYSTICK_DEADZONE;
+        int dz = _jsSideDeadzone(center - adcMin);
+        if (-offset <= dz) return 0.0f;
+        int edgeNeg = center - dz;
         int rangeNeg = edgeNeg - adcMin;
         if (rangeNeg <= 0) return -1.0f;
         usable = -((float)(edgeNeg - raw) / (float)rangeNeg);
@@ -219,9 +233,9 @@ inline const char* joystickDirectionLabel(float x, float y) {
 // Call after joystickInit(); values outside the valid ADC range are ignored.
 // ---------------------------------------------------------------------------
 inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int yMax) {
-    // Sanity: each range must contain the center with room for the deadzone.
-    bool xOk = (xMin < _jsXCenter - JOYSTICK_DEADZONE) && (xMax > _jsXCenter + JOYSTICK_DEADZONE);
-    bool yOk = (yMin < _jsYCenter - JOYSTICK_DEADZONE) && (yMax > _jsYCenter + JOYSTICK_DEADZONE);
+    // Sanity: each range must contain the center with usable travel on both sides.
+    bool xOk = (xMin < _jsXCenter - JOYSTICK_MIN_HALF_SPAN) && (xMax > _jsXCenter + JOYSTICK_MIN_HALF_SPAN);
+    bool yOk = (yMin < _jsYCenter - JOYSTICK_MIN_HALF_SPAN) && (yMax > _jsYCenter + JOYSTICK_MIN_HALF_SPAN);
     if (!xOk || !yOk) {
         Logger::instance().logForced(LogLevel::WARN, TAG_JOYSTICK, __FILE__, __LINE__,
             "Full-range cal rejected (bad range): X=%d..%d Y=%d..%d centers=(%d,%d)",
@@ -276,10 +290,6 @@ inline JoystickNorm joystickRead() {
     return n;
 }
 
-// ---------------------------------------------------------------------------
-// Expected rest center: midpoint of the full-range cal if one is loaded,
-// otherwise the theoretical ADC midpoint.
-// ---------------------------------------------------------------------------
 inline int joystickExpectedCenterX() {
     return _jsRangeCalibrated ? (_jsXMin + _jsXMax) / 2 : JOYSTICK_CENTER;
 }
@@ -287,7 +297,9 @@ inline int joystickExpectedCenterY() {
     return _jsRangeCalibrated ? (_jsYMin + _jsYMax) / 2 : JOYSTICK_CENTER;
 }
 
+// No reference before 'cal full' (output span may be far from 0-3.3 V); arming is locked instead
 inline bool joystickRawNearExpectedCenter(const JoystickRaw& raw) {
+    if (!_jsRangeCalibrated) return true;
     return abs(raw.x - joystickExpectedCenterX()) <= JOYSTICK_CENTER_TOLERANCE
         && abs(raw.y - joystickExpectedCenterY()) <= JOYSTICK_CENTER_TOLERANCE;
 }
@@ -296,8 +308,7 @@ inline bool joystickRawNearExpectedCenter(const JoystickRaw& raw) {
 // Re-calibrate center position at runtime (joystick must be at rest).
 // Lighter than joystickInit(): skips pin setup, warm-up reads, boot probe,
 // and pin-map log — just re-samples the center position.
-// Returns false (and falls back to the expected center) if the sample is
-// implausibly far off, i.e. the stick was not at rest.
+// Returns false and keeps the expected center if the stick was not at rest.
 // ---------------------------------------------------------------------------
 inline bool joystickRecalibrate() {
     const int calSamples = 32;

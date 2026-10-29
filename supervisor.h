@@ -85,9 +85,13 @@ public:
     
     /**
      * Request transition to ARMED state (ready to drive)
-     * Only valid from PAIRED state
+     * Only valid from PAIRED state and while not arm-inhibited.
      */
-    void requestArm();
+    bool requestArm();
+
+    // Blocks requestArm() and AUTO_ARM_ON_CONNECT; does not disarm
+    void setArmInhibit(bool inhibit) { _armInhibit = inhibit; }
+    bool isArmInhibited() const { return _armInhibit; }
     
     /**
      * Request disarm (ARMED or DRIVING -> PAIRED)
@@ -132,8 +136,6 @@ public:
     const SupervisorConfig& getConfig() const { return _config; }
     bool isConnected() const;
     bool isDriving() const { return _state == SUPERVISOR_DRIVING; }
-    // ARMED but still waiting for the stick to rest at neutral before a drive may start
-    bool isAwaitingNeutral() const { return _state == SUPERVISOR_ARMED && !_neutralConfirmed; }
     // Returns ms remaining until auto-disarm fires (0 if not in ARMED or already expired)
     uint32_t getArmedIdleRemainingMs() const;
     // Returns the highest per-wheel retry count consumed in the current connect session
@@ -165,6 +167,7 @@ private:
     bool           _stopRequested;
     bool           _deadzoneStopLatched; // true after sending one-shot STOP for current deadzone period
     bool           _driveSessionActive;  // true from ARMED entry until explicit disarm / disconnect
+    bool           _armInhibit;
     
     // ---------------------------------------------------------------------------
     // Timing
@@ -179,9 +182,9 @@ private:
     uint32_t _activateHoldStartMs;  // millis() when joystick first moved out of deadzone in ARMED
     uint32_t _idleHoldStartMs;      // millis() when joystick first returned to deadzone in DRIVING
     uint32_t _armedEntryMs;         // millis() when ARMED state was entered (idle disarm timer)
-    uint32_t _lastActiveInputMs;    // millis() of last non-neutral stick input (idle disarm timer)
-    uint32_t _neutralSinceMs;       // millis() when stick reached neutral after arming
-    bool     _neutralConfirmed;     // stick has rested at neutral since arming; driving allowed
+    uint32_t _lastActiveInputMs;    // last non-neutral stick input (idle disarm timer)
+    uint32_t _neutralSinceMs;
+    bool     _neutralConfirmed;     // neutral interlock passed since arming
     uint32_t _lastArmedKeepaliveMs; // millis() of last zero-speed keep-alive sent in ARMED state
     uint32_t _driveEntryMs;         // millis() when DRIVING state was entered (stale-notify watchdog anchor)
     uint32_t _reconnectNotBeforeMs; // earliest millis() to spawn first connect task (post-stop settle)

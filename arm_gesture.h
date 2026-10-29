@@ -6,8 +6,6 @@
  *   2. short pull back (ARM_GESTURE_BACK_MIN_MS .. ARM_GESTURE_BACK_MAX_MS)
  *   3. release to center                               -> ARM_GESTURE_DONE
  * Any sideways deflection, overlong step or gap between steps resets it.
- *
- * Pure logic (normalized stick + timestamp in), so it can be unit tested.
  */
 
 #ifndef ARM_GESTURE_H
@@ -20,7 +18,7 @@
 enum ArmGestureEvent : uint8_t {
     ARM_GESTURE_NONE = 0,
     ARM_GESTURE_STEP = 1,   // forward hold recognised, waiting for the pull back
-    ARM_GESTURE_DONE = 2,   // full gesture completed
+    ARM_GESTURE_DONE = 2,
 };
 
 class ArmGesture {

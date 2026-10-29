@@ -119,7 +119,7 @@ static void onSupervisorStateChange(SupervisorState oldState, SupervisorState ne
     case SUPERVISOR_PAIRED:
         ledSetStatus(LED_OFF);
         if (oldState == SUPERVISOR_ARMED || oldState == SUPERVISOR_DRIVING) {
-            // Disarm (button, idle timeout, serial): still connected, no re-sync needed
+            // Disarm: still connected, no assist re-sync needed
             buzzerPlay(BUZZ_POWER_OFF);
             ledFlashConfirm(1);
             LOG_INFO(TAG_SUPERVISOR, "Disarmed");
@@ -239,8 +239,7 @@ static bool powerOnSafetyCheck() {
         }
 
 #ifndef NO_JOYSTICK
-        // Judge rest against the expected center, not the boot-sampled one:
-        // a stick held deflected at boot would otherwise read as "centered".
+        // Not js.inDeadzone: a stick held at boot is "centered" relative to itself
         if (joystickRawNearExpectedCenter(joystickReadRaw())) {
             if (!centered) {
                 centered = true;
@@ -328,8 +327,7 @@ void setup() {
     LOG_INFO(TAG_BOOT, "Battery: %d %%", batteryPct);
 #endif
 
-    // Full-range cal must be loaded before the safety check: its midpoint is
-    // the reference for "stick at rest".
+    // Before the safety check: its midpoint is the rest reference.
     // Without it, theoretical ADC min/max (0/4095) are used and most joysticks
     // will never reach 1.0 normalized, capping effective speed.
     {
@@ -337,17 +335,23 @@ void setup() {
         if (nvsLoadJsRange(&xMin, &xMax, &yMin, &yMax)) {
             joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
         } else {
-            LOG_INFO(TAG_BOOT, "No joystick range cal in NVS - run 'cal full' to calibrate");
+            Logger::instance().logForced(LogLevel::WARN, TAG_JOYSTICK, __FILE__, __LINE__,
+                "No joystick range cal in NVS - arming locked until 'cal full' is run");
+        }
+        uint8_t dz = 0;
+        if (nvsLoadJsDeadzone(&dz)) {
+            joystickSetDeadzonePct(dz);
+            LOG_INFO(TAG_BOOT, "Joystick deadzone loaded from NVS: %u%%", dz);
         }
     }
+    supervisor.setArmInhibit(!joystickHasRangeCalibration());
 
     sysState = STATE_BOOT;
     powerOnSafetyCheck();
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Recalibrating joystick after safety check");
     if (!joystickRecalibrate()) {
-        // Stick off-center (E-stop skip) or cal outdated: drive stays blocked
-        // by the supervisor's neutral interlock until the stick reads centered.
+        // Neutral interlock still blocks driving until the stick reads centered
         buzzerPlay(BUZZ_WARNING);
     }
 
@@ -540,7 +544,7 @@ void loop() {
     if (assistLong) {
         if (supState == SUPERVISOR_PAIRED) {
             LOG_INFO(TAG_BUTTON, "Assist hold: arming");
-            supervisor.requestArm();
+            if (!supervisor.requestArm()) buzzerPlay(BUZZ_WARNING);
         }
         else if (supState == SUPERVISOR_ARMED || supState == SUPERVISOR_DRIVING) {
             LOG_INFO(TAG_BUTTON, "Assist hold: disarming");
@@ -560,7 +564,7 @@ void loop() {
         }
         else if (ev == ARM_GESTURE_DONE) {
             LOG_INFO(TAG_SUPERVISOR, "Arm gesture recognised: arming");
-            supervisor.requestArm();
+            if (!supervisor.requestArm()) buzzerPlay(BUZZ_WARNING);
         }
     }
     else {

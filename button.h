@@ -84,7 +84,6 @@ struct Button {
         return false;
     }
 
-    // True once per release of a press that was not a long-press
     bool wasShortReleased() {
         if (shortReleaseEvent) {
             shortReleaseEvent = false;
@@ -93,8 +92,7 @@ struct Button {
         return false;
     }
 
-    // True once per press as soon as it has been held for holdMs;
-    // the release that follows is then not reported as a short press.
+    // True once per press; the following release is then not a short press
     bool wasHeldFor(uint32_t holdMs) {
         if (isHeld() && !holdConsumed && (millis() - pressStartMs) >= holdMs) {
             holdConsumed = true;
@@ -103,7 +101,7 @@ struct Button {
         return false;
     }
 
-    // Swallow the current press (e.g. it was part of a button combo)
+    // For button combos: the press must not also fire its single action
     void cancelPress() {
         holdConsumed = true;
         shortReleaseEvent = false;

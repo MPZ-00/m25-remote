@@ -199,6 +199,27 @@ inline bool nvsSaveMaxSpeed(uint8_t pct) {
     return ok;
 }
 
+inline bool nvsSaveJsDeadzone(uint8_t pct) {
+    if (pct > 100) return false;
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("js_dz", pct) == 1;
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadJsDeadzone(uint8_t* pct) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    uint8_t val = p.getUChar("js_dz", 0xFF);
+    p.end();
+    if (val <= 100) {
+        *pct = val;
+        return true;
+    }
+    return false;
+}
+
 // Fills *pct with persisted value.  Returns true if NVS had a value.
 inline bool nvsLoadMaxSpeed(uint8_t* pct) {
     Preferences p;

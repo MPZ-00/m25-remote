@@ -89,7 +89,6 @@ static void _ledUpdate(LedState &led) {
             _ledSetDuty(led.pin, (led.flashHalves & 1) ? LED_DUTY_ON : LED_DUTY_OFF);
         }
         if (led.flashHalves > 0) return;
-        // Overlay done: re-assert the base mode from a clean phase
         led.lastToggle = now;
         led.blinkPhase = true;
         _ledSetDuty(led.pin, led.mode == LED_OFF ? LED_DUTY_OFF : LED_DUTY_ON);
@@ -210,8 +209,7 @@ inline void ledUpdateBle(bool anyConnected, bool allConnected) {
     _ledSetMode(_ledBle, mode);
 }
 
-// Arm/disarm confirmation: flash the white LED `count` times, then resume its
-// connection pattern. It is solid while connected, so the flashes stand out.
+// Uses the BLE LED: it is solid while connected, so the flashes stand out
 inline void ledFlashConfirm(uint8_t count) {
     _ledBle.flashHalves = (uint8_t)(count * 2);
     _ledBle.flashLastMs = millis();

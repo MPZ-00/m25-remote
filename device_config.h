@@ -158,10 +158,11 @@
 #define JOYSTICK_ADC_MIN    0
 #define JOYSTICK_ADC_MAX    4095
 #define JOYSTICK_CENTER     2048        // Ideal midpoint; calibrated at runtime
-#define JOYSTICK_DEADZONE   200         // +-200 counts around center (~5 %)
-// Max distance of the sampled rest center from the expected center (midpoint of
-// the 'cal full' range, or JOYSTICK_CENTER without one). Catches a stick held
-// deflected at boot, which would otherwise be calibrated as "center".
+// % of travel, not counts: fixed counts make short-travel sticks feel numb
+#define JOYSTICK_DEADZONE_PCT        10
+#define JOYSTICK_DEADZONE_MIN_COUNTS 40   // ADC noise floor
+#define JOYSTICK_MIN_HALF_SPAN       300  // shortest center-to-end travel 'cal full' accepts
+// Rest center vs. 'cal full' midpoint; catches a stick held deflected at boot
 #define JOYSTICK_CENTER_TOLERANCE 400
 #define ADC_SAMPLES         10          // Oversampling for noise reduction
 
@@ -252,22 +253,17 @@ enum SystemState : uint8_t {
 // ---------------------------------------------------------------------------
 // #define AUTO_ARM_ON_CONNECT
 
-// Hardware arming without serial:
-//   - hold the assist button ARM_BUTTON_HOLD_MS to toggle arm/disarm
-//   - stick gesture while PAIRED: push forward and hold ARM_GESTURE_FWD_HOLD_MS
-//     (short beep), then a short pull back, then release to center
-// After any arm the stick must rest at neutral for ARM_NEUTRAL_HOLD_MS before
-// it can start a drive, so a stick held through arm/reconnect cannot lurch the chair.
-// ARMED auto-disarms to PAIRED after ARM_IDLE_TIMEOUT_MS without stick movement.
+// Hardware arming: hold assist, or stick gesture (see arm_gesture.h).
+// Neutral hold keeps a stick held through arm/reconnect from starting a drive.
 #define ARM_BUTTON_HOLD_MS          1000
 #define ARM_NEUTRAL_HOLD_MS         500
 #define ARM_IDLE_TIMEOUT_MS         60000
-#define ARM_GESTURE_THRESHOLD       0.70f  // normalized deflection that counts as "full"
-#define ARM_GESTURE_OFF_AXIS_MAX    0.35f  // max sideways deflection during the gesture
+#define ARM_GESTURE_THRESHOLD       0.70f
+#define ARM_GESTURE_OFF_AXIS_MAX    0.35f
 #define ARM_GESTURE_FWD_HOLD_MS     1000
-#define ARM_GESTURE_BACK_MIN_MS     80     // shorter = noise
-#define ARM_GESTURE_BACK_MAX_MS     700    // longer = not a "short" pull
-#define ARM_GESTURE_STEP_TIMEOUT_MS 1000   // max gap between gesture steps
+#define ARM_GESTURE_BACK_MIN_MS     80
+#define ARM_GESTURE_BACK_MAX_MS     700
+#define ARM_GESTURE_STEP_TIMEOUT_MS 1000
 
 // ---------------------------------------------------------------------------
 // Deadman switch

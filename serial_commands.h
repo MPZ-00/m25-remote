@@ -23,6 +23,7 @@
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
  *   recal                       Recalibrate joystick center position
  *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right, 600ms grace + 1200ms sample each)
+ *   deadzone [3-30]             Show/set joystick deadzone in % of travel (NVS)
  *   fwd [speed] [ms]            Drive straight forward at speed% for ms (default 30%% 2000ms, max 5s)
  *   bwd [speed] [ms]            Drive straight backward (same defaults)
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
@@ -256,6 +257,7 @@ static void _scPrintHelp() {
     _scCmdOut("  hillhold <on|off>         Toggle hill hold");
     _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
+    _scCmdOut("  deadzone [3-30]           Show or set joystick deadzone in %% of travel (persisted)");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
     _scCmdOut("  bwd [speed] [ms]          Drive backward (default 30%% 2000ms, max 5s)");
@@ -464,11 +466,11 @@ static void _scPrintJs() {
     const char* dir = joystickDirectionLabel(n.x, n.y);
     _scCmdOutf("[JS] raw X=%-5d Y=%-5d  ctr X=%-5d Y=%-5d  norm X=%+.3f Y=%+.3f  dz=%s  dir=%s",
         raw.x, raw.y, _jsXCenter, _jsYCenter, n.x, n.y, n.inDeadzone ? "yes" : "no", dir);
-    _scCmdOutf("[JS] range X=%d..%d  Y=%d..%d  %s",
-        _jsXMin, _jsXMax, _jsYMin, _jsYMax,
-        (_jsXMax == JOYSTICK_ADC_MAX && _jsYMax == JOYSTICK_ADC_MAX)
-            ? "(theoretical - run 'cal full' to calibrate)"
-            : "(measured)");
+    _scCmdOutf("[JS] range X=%d..%d  Y=%d..%d  deadzone %u%%  %s",
+        _jsXMin, _jsXMax, _jsYMin, _jsYMax, joystickGetDeadzonePct(),
+        joystickHasRangeCalibration()
+            ? "(measured)"
+            : "(theoretical - run 'cal full', arming locked)");
 }
 
 static void _scPrintWheels() {
@@ -1024,6 +1026,27 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         if (!ctx.fnRecalibrate()) {
             _scCmdOut("recal: sample rejected (stick off-center or 'cal full' outdated)");
         }
+        else if (ctx.supervisor && ctx.supervisor->isArmInhibited() && joystickHasRangeCalibration()) {
+            ctx.supervisor->setArmInhibit(false);
+            _scCmdOut("recal: arming unlocked");
+        }
+        return;
+    }
+
+    // deadzone [pct]
+    if (strcmp(cmd, "deadzone") == 0 || strncmp(cmd, "deadzone ", 9) == 0) {
+        if (cmd[8] == '\0') {
+            _scCmdOutf("deadzone: %u%% of each side's travel", joystickGetDeadzonePct());
+            return;
+        }
+        int v = atoi(cmd + 9);
+        if (v < 3 || v > 30) {
+            _scCmdOut("deadzone: use 3-30 (percent of travel)");
+            return;
+        }
+        joystickSetDeadzonePct((uint8_t)v);
+        bool saved = nvsSaveJsDeadzone((uint8_t)v);
+        _scCmdOutf("deadzone: %d%% %s", v, saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
         return;
     }
 
@@ -1071,13 +1094,29 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         int xMax = joystickSampleAxisMax(JOYSTICK_X_PIN, holdMs);
         _scCmdOutf("[Cal]   X max = %d", xMax);
 
-        _scCmdOut("[Cal] Return stick to CENTER");
+        _scCmdOut("[Cal] Return stick to CENTER and let go");
 
         joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+        if (!joystickHasRangeCalibration()) {
+            _scCmdOut("[Cal] Range rejected - check wiring and repeat 'cal full'");
+            return;
+        }
         bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax);
         _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
             _jsXMin, _jsXMax, _jsYMin, _jsYMax,
             saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+
+        // Boot center may predate the range; only a plausible one unlocks arming
+        delay(graceMs * 2);
+        if (joystickRecalibrate()) {
+            if (ctx.supervisor && ctx.supervisor->isArmInhibited()) {
+                ctx.supervisor->setArmInhibit(false);
+                _scCmdOut("[Cal] Arming unlocked");
+            }
+        }
+        else {
+            _scCmdOut("[Cal] Center not at rest - let go of the stick and run 'recal'");
+        }
         _scCmdOut("[Cal] Run 'js' with full deflection to verify norm reaches ~1.0");
         return;
     }
@@ -1094,8 +1133,11 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 supervisorStateToString(supState));
             return;
         }
-        ctx.supervisor->requestArm();
-        _scCmdOut("Armed - joystick + deadman to drive");
+        if (!ctx.supervisor->requestArm()) {
+            _scCmdOut("arm: refused - joystick not calibrated, run 'cal full' first");
+            return;
+        }
+        _scCmdOut("Armed - center stick, then joystick + deadman to drive");
         return;
     }
 

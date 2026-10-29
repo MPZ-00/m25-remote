@@ -21,6 +21,7 @@ Supervisor::Supervisor(Mapper& mapper, const SupervisorConfig& config)
     , _stopRequested(false)
     , _deadzoneStopLatched(false)
     , _driveSessionActive(false)
+    , _armInhibit(false)
     , _lastUpdateMs(0)
     , _lastInputTimeMs(0)
     , _lastLinkTimeMs(0)
@@ -193,11 +194,17 @@ void Supervisor::requestEmergencyStop(const char* reason) {
     enterFailsafe(reason);
 }
 
-void Supervisor::requestArm() {
+bool Supervisor::requestArm() {
+    if (_armInhibit) {
+        LOG_WARN(TAG_SUPERVISOR, "Arm refused: joystick not calibrated (run 'cal full')");
+        return false;
+    }
     if (_state == SUPERVISOR_PAIRED) {
         bleResetMotorWriteOk();   // clear any stale failure flag from prior session
         transitionTo(SUPERVISOR_ARMED);
+        return true;
     }
+    return false;
 }
 
 void Supervisor::requestDisarm() {
@@ -221,8 +228,7 @@ void Supervisor::processInput(const ControlState& control) {
 
     // Different behavior depending on state
     if (_state == SUPERVISOR_ARMED) {
-        // Neutral interlock: after arming, the stick must rest at neutral before
-        // it can start a drive, so a stick held through arm/reconnect can't lurch the chair.
+        // Neutral interlock: a stick held through arm/reconnect must not start a drive
         if (!_neutralConfirmed) {
             if (control.isNeutral()) {
                 if (_neutralSinceMs == 0) {
@@ -714,8 +720,7 @@ void Supervisor::checkWatchdogs() {
         }
     }
     else if (_state == SUPERVISOR_ARMED) {
-        // Measured from the later of arm entry or last stick movement.
-        // _lastInputTimeMs can't be used: processInput() refreshes it every loop.
+        // Not _lastInputTimeMs: processInput() refreshes it every loop
         uint32_t idleRef = (_lastActiveInputMs > _armedEntryMs) ? _lastActiveInputMs : _armedEntryMs;
         if (now - idleRef > _config.armIdleTimeoutMs) {
             LOG_INFO(TAG_WATCHDOG, "Arm idle timeout - disarming to PAIRED");
@@ -802,10 +807,13 @@ void Supervisor::transitionTo(SupervisorState newState) {
     // PAIRED entry, not every loop tick as with the old handlePaired() approach).
     if (newState == SUPERVISOR_PAIRED) {
 #ifdef AUTO_ARM_ON_CONNECT
-        LOG_INFO(TAG_SUPERVISOR, "AUTO_ARM_ON_CONNECT: arming automatically");
-        bleResetMotorWriteOk();
-        transitionTo(SUPERVISOR_ARMED);
-        return;  // transitionTo() will handle ARMED entry setup below
+        if (!_armInhibit) {
+            LOG_INFO(TAG_SUPERVISOR, "AUTO_ARM_ON_CONNECT: arming automatically");
+            bleResetMotorWriteOk();
+            transitionTo(SUPERVISOR_ARMED);
+            return;  // transitionTo() will handle ARMED entry setup below
+        }
+        LOG_WARN(TAG_SUPERVISOR, "AUTO_ARM_ON_CONNECT skipped: joystick not calibrated");
 #endif
     }
 
@@ -816,8 +824,7 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _activateHoldStartMs = 0;
         _idleHoldStartMs = 0;
         _armedEntryMs = millis();
-        // Coming back from DRIVING the stick already held center for JS_IDLE_HOLD_MS;
-        // every other entry (arm, reconnect) must see neutral first.
+        // From DRIVING the stick already held center for JS_IDLE_HOLD_MS
         _neutralConfirmed = (oldState == SUPERVISOR_DRIVING);
         _neutralSinceMs = 0;
         _lastArmedKeepaliveMs = millis();  // keep-alive fires after one interval, not immediately
