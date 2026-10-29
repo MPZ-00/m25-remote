@@ -1,16 +1,16 @@
-# Graph Report - m25-remote  (2026-10-29)
+# Graph Report - m25-remote  (2026-10-30)
 
 ## Corpus Check
-- 79 files · ~82,288 words
+- 79 files · ~82,449 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1114 nodes · 1589 edges · 93 communities (79 shown, 14 thin omitted)
-- Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 127 edges (avg confidence: 0.8)
+- 1120 nodes · 1603 edges · 91 communities (78 shown, 13 thin omitted)
+- Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 134 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b2099429`
+- Built from commit: `31ee8613`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -85,7 +85,6 @@
 - [[_COMMUNITY_Community 69|Community 69]]
 - [[_COMMUNITY_Community 70|Community 70]]
 - [[_COMMUNITY_Community 71|Community 71]]
-- [[_COMMUNITY_Community 72|Community 72]]
 - [[_COMMUNITY_Community 73|Community 73]]
 - [[_COMMUNITY_Community 74|Community 74]]
 - [[_COMMUNITY_Community 75|Community 75]]
@@ -101,12 +100,11 @@
 - [[_COMMUNITY_Community 85|Community 85]]
 - [[_COMMUNITY_Community 86|Community 86]]
 - [[_COMMUNITY_Community 87|Community 87]]
-- [[_COMMUNITY_Community 88|Community 88]]
 - [[_COMMUNITY_Community 89|Community 89]]
 - [[_COMMUNITY_Community 90|Community 90]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `_scDispatch()` - 41 edges
+1. `_scDispatch()` - 46 edges
 2. `cli_poll()` - 22 edges
 3. `_wheelActive()` - 19 edges
 4. `_sendCommand()` - 19 edges
@@ -126,7 +124,7 @@
   serial_commands.h → button.h
 - `ROADMAP 2.6: persist joystick full-range calibration to NVS (marked pending)` --references--> `joystickRecalibrate()`  [EXTRACTED]
   ROADMAP.md → joystick.h
-- `_scDispatch()` --calls--> `joystickApplyFullRangeCalibration()`  [INFERRED]
+- `_scDispatch()` --calls--> `joystickSetDeadzonePct()`  [INFERRED]
   serial_commands.h → joystick.h
 
 ## Import Cycles
@@ -142,7 +140,7 @@
 - **BLE Dual-Core Threading Model** — claude_core0, claude_core1, claude_blestartmotortask, claude_blelastmotorwriteok, claude_supervisor, claude_remote_control_ino [EXTRACTED 1.00]
 - **device_config.h Feature Flags** — claude_wheel_mode, claude_no_joystick, claude_no_deadman_hardware, claude_enable_battery_monitor, claude_enable_idle_watchdog, claude_auto_arm_on_connect, claude_device_config_h [EXTRACTED 1.00]
 
-## Communities (93 total, 14 thin omitted)
+## Communities (91 total, 13 thin omitted)
 
 ### Community 0 - "BLE GATT Client Core"
 Cohesion: 0.06
@@ -169,8 +167,8 @@ Cohesion: 0.20
 Nodes (12): AUTO_ARM_ON_CONNECT flag, config show serial command, device_config.h, ENABLE_BATTERY_MONITOR flag, ENABLE_IDLE_WATCHDOG flag, .env, load_env.py, NO_DEADMAN_HARDWARE flag (+4 more)
 
 ### Community 6 - "BLE Diagnostics and Tx Stats"
-Cohesion: 0.15
-Nodes (18): nvsClearAll(), nvsLoadActiveSource(), nvsLoadAssistLevel(), nvsLoadKey(), nvsLoadMac(), nvsLoadWheelMode(), nvsPrintAll(), nvsSaveActiveSource() (+10 more)
+Cohesion: 0.14
+Nodes (19): nvsClearAll(), nvsLoadActiveSource(), nvsLoadAssistLevel(), nvsLoadKey(), nvsLoadMac(), nvsLoadWheelMode(), nvsPrintAll(), nvsSaveActiveSource() (+11 more)
 
 ### Community 7 - "Buzzer Control and Debug Flags"
 Cohesion: 0.12
@@ -217,20 +215,20 @@ Cohesion: 0.13
 Nodes (15): TxStats, assistLevel, driveMode, driveModeWriteFail, other, readCruise, readFw, readSoc (+7 more)
 
 ### Community 18 - "Serial Command Output Helpers"
-Cohesion: 0.12
-Nodes (24): LogLevel, _scApplySource(), _scCmdDecorateMsg(), _scCmdOut(), _scCmdOutf(), _scCmdTagFromMsg(), _scKmhToPct(), _scLevelName() (+16 more)
+Cohesion: 0.15
+Nodes (23): LogLevel, _scApplySource(), _scCmdDecorateMsg(), _scCmdOut(), _scCmdOutf(), _scCmdTagFromMsg(), _scKmhToPct(), _scLevelName() (+15 more)
 
 ### Community 19 - "Joystick ADC Input"
-Cohesion: 0.18
-Nodes (17): JoystickNorm, joystickApplyFullRangeCalibration(), joystickDirectionLabel(), joystickExpectedCenterX(), joystickExpectedCenterY(), joystickNormalizeAxis(), joystickRawNearExpectedCenter(), joystickRead() (+9 more)
+Cohesion: 0.16
+Nodes (20): JoystickNorm, joystickApplyFullRangeCalibration(), joystickDirectionLabel(), joystickExpectedCenterX(), joystickExpectedCenterY(), joystickGetDeadzonePct(), joystickHasRangeCalibration(), joystickNormalizeAxis() (+12 more)
 
 ### Community 20 - "LED Status Indicators"
 Cohesion: 0.25
 Nodes (15): ledFlashConfirm(), ledInit(), ledSetAssistLevel(), ledSetBattery(), ledSetBleMode(), _ledSetDuty(), ledSetHillHold(), _ledSetMode() (+7 more)
 
 ### Community 21 - "M25 BLE Response Parsing"
-Cohesion: 0.29
-Nodes (4): class, M25DisconnectCallback(), _parseInt32BE(), _parseUint32BE()
+Cohesion: 0.14
+Nodes (9): class, M25DisconnectCallback(), _parseInt32BE(), _parseUint32BE(), class, Mapper(), ROADMAP Phase 1: Core safety (done), class (+1 more)
 
 ### Community 22 - "Serial Profile Commands"
 Cohesion: 0.06
@@ -324,6 +322,10 @@ Nodes (11): 1. Credentials, 2. Build & Flash, 3. Serial interface, Configuration
 Cohesion: 0.20
 Nodes (9): Buttons, Context, Goals, LEDs, Non-goals (for this version), Open questions, Pinout summary (for enclosure/wiring handoff), Remote control redesign — no-deadman, 3-button, integrated-LED version (+1 more)
 
+### Community 55 - "README State Machine Diagram"
+Cohesion: 0.16
+Nodes (7): buzzerPlay(), BuzzerPattern, calculateMotorCommand(), JoystickNorm, joystickToMotorCommand(), printMotorCommand(), MotorCommand
+
 ### Community 58 - "Community 58"
 Cohesion: 0.22
 Nodes (9): ESP32 One-Handed Remote Control - Design Specification, Leverage Existing m5squared Codebase, New Files to Create, Non-Negotiable Safety Rules, Project Overview, Reference Documentation Links, Repository Integration, Safety Critical Requirements (+1 more)
@@ -375,10 +377,6 @@ Nodes (6): 1. Tactile Markers, 2. Audible Feedback (Optional), 3. Visual Design,
 ### Community 71 - "Community 71"
 Cohesion: 0.33
 Nodes (6): Bluetooth Connection, Command Timing, Communication Requirements, Error Handling, Key Protocol Commands, Protocol Implementation
-
-### Community 72 - "Community 72"
-Cohesion: 0.53
-Nodes (5): calculateMotorCommand(), JoystickNorm, joystickToMotorCommand(), printMotorCommand(), MotorCommand
 
 ### Community 73 - "Community 73"
 Cohesion: 0.40
@@ -436,10 +434,6 @@ Nodes (3): _audit(), M25 Remote Enclosure - VARIANT B, single button row =======
 Cohesion: 0.67
 Nodes (3): esp_bt_gap_cb_event_t, esp_bt_gap_cb_param_t, _rfcommGapCb()
 
-### Community 88 - "Community 88"
-Cohesion: 0.67
-Nodes (3): class, Mapper(), ROADMAP Phase 1: Core safety (done)
-
 ### Community 89 - "Community 89"
 Cohesion: 0.67
 Nodes (3): Mapper, Supervisor(), SupervisorConfig
@@ -453,7 +447,7 @@ Nodes (3): Mapper, Supervisor(), SupervisorConfig
 ## Knowledge Gaps
 - **435 isolated node(s):** `String`, `WheelRuntimeConfig`, `CliActions`, `WheelState`, `CmdResult` (+430 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -463,12 +457,12 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `wifi_joystick README` and `fake_wheel README`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `Remote Control Design Specification` connect `Fancy Light Module` to `Community 65`, `Community 70`, `Community 71`, `Community 77`, `Protocol Design Rationale`, `Community 78`, `Community 83`, `Community 84`, `Community 59`, `Community 60`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Why does `Cross-Platform BLE Communication` connect `Protocol Design Rationale` to `RFCOMM Env Loader Script`?**
-  _High betweenness centrality (0.021) - this node is a cross-community bridge._
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Why does `ESP32 One-Handed Remote Control - Design Specification` connect `Community 58` to `Community 64`, `Community 67`, `Community 68`, `Community 69`, `Community 75`, `WiFi Joystick Config (Archived)`, `Protocol Design Rationale`, `Community 76`, `Community 82`?**
+  _High betweenness centrality (0.019) - this node is a cross-community bridge._
+- **Why does `Cross-Platform BLE Communication` connect `Protocol Design Rationale` to `RFCOMM Env Loader Script`?**
   _High betweenness centrality (0.018) - this node is a cross-community bridge._
-- **Are the 22 inferred relationships involving `_scDispatch()` (e.g. with `buttonsPrintDebug()` and `joystickApplyFullRangeCalibration()`) actually correct?**
-  _`_scDispatch()` has 22 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 27 inferred relationships involving `_scDispatch()` (e.g. with `buttonsPrintDebug()` and `joystickApplyFullRangeCalibration()`) actually correct?**
+  _`_scDispatch()` has 27 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 14 inferred relationships involving `cli_poll()` (e.g. with `buzzer_beep()` and `buzzer_disable()`) actually correct?**
   _`cli_poll()` has 14 INFERRED edges - model-reasoned connections that need verification._
