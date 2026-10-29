@@ -23,6 +23,7 @@
 #include "mapper.h"
 #include "supervisor.h"
 #include "joystick.h"
+#include "arm_gesture.h"
 #include "led_control.h"
 #include "button.h"
 #include "motor_control.h"
@@ -66,8 +67,14 @@ static uint8_t _errorStopsSent = 0;
 
 static MapperConfig mapperConfig;
 static Mapper mapper(mapperConfig);
-static SupervisorConfig supervisorConfig;
+static SupervisorConfig makeSupervisorConfig() {
+    SupervisorConfig c;
+    c.armIdleTimeoutMs = ARM_IDLE_TIMEOUT_MS;
+    return c;
+}
+static SupervisorConfig supervisorConfig = makeSupervisorConfig();
 static Supervisor supervisor(mapper, supervisorConfig);
+static ArmGesture armGesture;
 
 //! TODO: supervisor.notifyConnectionChange() exists as a fast-path failsafe for
 // simultaneous dual-wheel disconnect. It is not yet wired to the BLE disconnect
@@ -77,7 +84,6 @@ static Supervisor supervisor(mapper, supervisorConfig);
 // cycle (50 ms); wire this when a thread-safe event queue is available.
 
 static void onSupervisorStateChange(SupervisorState oldState, SupervisorState newState) {
-    (void)oldState;
     const char* newName = (newState == SUPERVISOR_DISCONNECTED) ? "DISCONNECTED" :
         (newState == SUPERVISOR_CONNECTING) ? "CONNECTING" :
         (newState == SUPERVISOR_PAIRED) ? "PAIRED" :
@@ -112,6 +118,13 @@ static void onSupervisorStateChange(SupervisorState oldState, SupervisorState ne
 
     case SUPERVISOR_PAIRED:
         ledSetStatus(LED_OFF);
+        if (oldState == SUPERVISOR_ARMED || oldState == SUPERVISOR_DRIVING) {
+            // Disarm (button, idle timeout, serial): still connected, no re-sync needed
+            buzzerPlay(BUZZ_POWER_OFF);
+            ledFlashConfirm(1);
+            LOG_INFO(TAG_SUPERVISOR, "Disarmed");
+            break;
+        }
         buzzerPlay(BUZZ_CONFIRM);
         // Re-sync assist level to wheel, resets to its own default on disconnect.
         bleSendAssistLevel(assistLevel);
@@ -121,6 +134,11 @@ static void onSupervisorStateChange(SupervisorState oldState, SupervisorState ne
 
     case SUPERVISOR_ARMED:
         ledSetStatus(LED_OFF);
+        if (oldState == SUPERVISOR_PAIRED) {
+            buzzerPlay(BUZZ_READY);
+            ledFlashConfirm(3);
+            LOG_INFO(TAG_SUPERVISOR, "Armed - center stick to enable driving");
+        }
         break;
 
     case SUPERVISOR_DRIVING:
@@ -203,7 +221,6 @@ static bool powerOnSafetyCheck() {
 
     while (true) {
         buttonsTick();
-        JoystickNorm js = joystickRead();
 
         while (Serial.available() > 0) {
             char c = (char)Serial.read();
@@ -222,7 +239,9 @@ static bool powerOnSafetyCheck() {
         }
 
 #ifndef NO_JOYSTICK
-        if (js.inDeadzone) {
+        // Judge rest against the expected center, not the boot-sampled one:
+        // a stick held deflected at boot would otherwise read as "centered".
+        if (joystickRawNearExpectedCenter(joystickReadRaw())) {
             if (!centered) {
                 centered = true;
                 centeredSince = millis();
@@ -309,11 +328,28 @@ void setup() {
     LOG_INFO(TAG_BOOT, "Battery: %d %%", batteryPct);
 #endif
 
+    // Full-range cal must be loaded before the safety check: its midpoint is
+    // the reference for "stick at rest".
+    // Without it, theoretical ADC min/max (0/4095) are used and most joysticks
+    // will never reach 1.0 normalized, capping effective speed.
+    {
+        int xMin, xMax, yMin, yMax;
+        if (nvsLoadJsRange(&xMin, &xMax, &yMin, &yMax)) {
+            joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+        } else {
+            LOG_INFO(TAG_BOOT, "No joystick range cal in NVS - run 'cal full' to calibrate");
+        }
+    }
+
     sysState = STATE_BOOT;
     powerOnSafetyCheck();
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Recalibrating joystick after safety check");
-    joystickRecalibrate();
+    if (!joystickRecalibrate()) {
+        // Stick off-center (E-stop skip) or cal outdated: drive stays blocked
+        // by the supervisor's neutral interlock until the stick reads centered.
+        buzzerPlay(BUZZ_WARNING);
+    }
 
     // Load persisted wheel mode before bleInit so the boot log shows the
     // effective mode (falls back to compile-time WHEEL_MODE).
@@ -372,18 +408,6 @@ void setup() {
         }
     }
 
-    // Load persisted joystick full-range calibration.
-    // Without this, theoretical ADC min/max (0/4095) are used and most joysticks
-    // will never reach 1.0 normalized, capping effective speed.
-    {
-        int xMin, xMax, yMin, yMax;
-        if (nvsLoadJsRange(&xMin, &xMax, &yMin, &yMax)) {
-            joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
-        } else {
-            LOG_INFO(TAG_BOOT, "No joystick range cal in NVS - run 'cal full' to calibrate");
-        }
-    }
-
     ledSetAssistLevel(assistLevel);
     ledSetHillHold(hillHoldOn);
 
@@ -434,6 +458,9 @@ void loop() {
     bool estopPressed = btnEstop.wasPressed();
     bool hillHoldPressed = btnHillHold.wasPressed();
     bool assistPressed = btnAssist.wasPressed();
+    // Assist: short press = cycle level/feel (on release), long hold = arm toggle
+    bool assistShort = btnAssist.wasShortReleased();
+    bool assistLong = btnAssist.wasHeldFor(ARM_BUTTON_HOLD_MS);
     bool powerPressed = btnPower.wasPressed();
 
     if (estopPressed) {
@@ -487,6 +514,7 @@ void loop() {
 
     if (hillHoldPressed && assistPressed) {
         LOG_WARN(TAG_BUTTON, "Dual press: forcing reconnect...");
+        btnAssist.cancelPress();
         supervisor.requestReconnect();
         ledTick();
         return;
@@ -509,7 +537,37 @@ void loop() {
         }
     }
 
-    if (assistPressed) {
+    if (assistLong) {
+        if (supState == SUPERVISOR_PAIRED) {
+            LOG_INFO(TAG_BUTTON, "Assist hold: arming");
+            supervisor.requestArm();
+        }
+        else if (supState == SUPERVISOR_ARMED || supState == SUPERVISOR_DRIVING) {
+            LOG_INFO(TAG_BUTTON, "Assist hold: disarming");
+            supervisor.requestDisarm();
+        }
+        else {
+            buzzerPlay(BUZZ_WARNING);
+            LOG_WARN(TAG_BUTTON, "Arm toggle ignored - not connected");
+        }
+    }
+
+    if (supState == SUPERVISOR_PAIRED) {
+        ArmGestureEvent ev = armGesture.update(js.x, js.y, js.inDeadzone, now);
+        if (ev == ARM_GESTURE_STEP) {
+            buzzerPlay(BUZZ_BUTTON);
+            ledFlashConfirm(1);
+        }
+        else if (ev == ARM_GESTURE_DONE) {
+            LOG_INFO(TAG_SUPERVISOR, "Arm gesture recognised: arming");
+            supervisor.requestArm();
+        }
+    }
+    else {
+        armGesture.reset();
+    }
+
+    if (assistShort) {
         if (supState == SUPERVISOR_PAIRED) {
             assistLevel = (assistLevel + 1) % ASSIST_COUNT;
             nvsSaveAssistLevel(assistLevel);

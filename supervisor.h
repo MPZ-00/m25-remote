@@ -132,6 +132,8 @@ public:
     const SupervisorConfig& getConfig() const { return _config; }
     bool isConnected() const;
     bool isDriving() const { return _state == SUPERVISOR_DRIVING; }
+    // ARMED but still waiting for the stick to rest at neutral before a drive may start
+    bool isAwaitingNeutral() const { return _state == SUPERVISOR_ARMED && !_neutralConfirmed; }
     // Returns ms remaining until auto-disarm fires (0 if not in ARMED or already expired)
     uint32_t getArmedIdleRemainingMs() const;
     // Returns the highest per-wheel retry count consumed in the current connect session
@@ -177,6 +179,9 @@ private:
     uint32_t _activateHoldStartMs;  // millis() when joystick first moved out of deadzone in ARMED
     uint32_t _idleHoldStartMs;      // millis() when joystick first returned to deadzone in DRIVING
     uint32_t _armedEntryMs;         // millis() when ARMED state was entered (idle disarm timer)
+    uint32_t _lastActiveInputMs;    // millis() of last non-neutral stick input (idle disarm timer)
+    uint32_t _neutralSinceMs;       // millis() when stick reached neutral after arming
+    bool     _neutralConfirmed;     // stick has rested at neutral since arming; driving allowed
     uint32_t _lastArmedKeepaliveMs; // millis() of last zero-speed keep-alive sent in ARMED state
     uint32_t _driveEntryMs;         // millis() when DRIVING state was entered (stale-notify watchdog anchor)
     uint32_t _reconnectNotBeforeMs; // earliest millis() to spawn first connect task (post-stop settle)

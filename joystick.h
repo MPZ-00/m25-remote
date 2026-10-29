@@ -24,11 +24,13 @@
 inline void joystickInit() {
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__, "NO_JOYSTICK defined - ADC disabled");
 }
-inline void joystickRecalibrate() {
+inline bool joystickRecalibrate() {
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__, "NO_JOYSTICK - recal skipped");
+    return true;
 }
 inline int  joystickReadRawAxis(uint8_t) { return JOYSTICK_CENTER; }
 struct JoystickRaw { int x = JOYSTICK_CENTER; int y = JOYSTICK_CENTER; };
+inline bool joystickRawNearExpectedCenter(const JoystickRaw&) { return true; }
 struct JoystickNorm { float x = 0.0f; float y = 0.0f; bool inDeadzone = true; };
 inline const char* joystickDirectionLabel(float, float) { return "CENTER"; }
 inline JoystickRaw  joystickReadRaw() { return { JOYSTICK_CENTER, JOYSTICK_CENTER }; }
@@ -63,6 +65,7 @@ static int _jsXMin = JOYSTICK_ADC_MIN;
 static int _jsXMax = JOYSTICK_ADC_MAX;
 static int _jsYMin = JOYSTICK_ADC_MIN;
 static int _jsYMax = JOYSTICK_ADC_MAX;
+static bool _jsRangeCalibrated = false;
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -227,6 +230,7 @@ inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int 
     }
     _jsXMin = xMin; _jsXMax = xMax;
     _jsYMin = yMin; _jsYMax = yMax;
+    _jsRangeCalibrated = true;
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Full-range cal applied: X=%d..%d Y=%d..%d", xMin, xMax, yMin, yMax);
 }
@@ -273,11 +277,29 @@ inline JoystickNorm joystickRead() {
 }
 
 // ---------------------------------------------------------------------------
+// Expected rest center: midpoint of the full-range cal if one is loaded,
+// otherwise the theoretical ADC midpoint.
+// ---------------------------------------------------------------------------
+inline int joystickExpectedCenterX() {
+    return _jsRangeCalibrated ? (_jsXMin + _jsXMax) / 2 : JOYSTICK_CENTER;
+}
+inline int joystickExpectedCenterY() {
+    return _jsRangeCalibrated ? (_jsYMin + _jsYMax) / 2 : JOYSTICK_CENTER;
+}
+
+inline bool joystickRawNearExpectedCenter(const JoystickRaw& raw) {
+    return abs(raw.x - joystickExpectedCenterX()) <= JOYSTICK_CENTER_TOLERANCE
+        && abs(raw.y - joystickExpectedCenterY()) <= JOYSTICK_CENTER_TOLERANCE;
+}
+
+// ---------------------------------------------------------------------------
 // Re-calibrate center position at runtime (joystick must be at rest).
 // Lighter than joystickInit(): skips pin setup, warm-up reads, boot probe,
 // and pin-map log — just re-samples the center position.
+// Returns false (and falls back to the expected center) if the sample is
+// implausibly far off, i.e. the stick was not at rest.
 // ---------------------------------------------------------------------------
-inline void joystickRecalibrate() {
+inline bool joystickRecalibrate() {
     const int calSamples = 32;
     long sumX = 0, sumY = 0;
     for (int i = 0; i < calSamples; i++) {
@@ -285,10 +307,20 @@ inline void joystickRecalibrate() {
         sumY += analogRead(JOYSTICK_Y_PIN);
         delay(4);
     }
-    _jsXCenter = (int)(sumX / calSamples);
-    _jsYCenter = (int)(sumY / calSamples);
+    JoystickRaw sampled = { (int)(sumX / calSamples), (int)(sumY / calSamples) };
+    if (!joystickRawNearExpectedCenter(sampled)) {
+        _jsXCenter = joystickExpectedCenterX();
+        _jsYCenter = joystickExpectedCenterY();
+        Logger::instance().logForced(LogLevel::WARN, TAG_JOYSTICK, __FILE__, __LINE__,
+            "Recal rejected: sample X=%d Y=%d too far from expected, using X=%d Y=%d (stick not at rest?)",
+            sampled.x, sampled.y, _jsXCenter, _jsYCenter);
+        return false;
+    }
+    _jsXCenter = sampled.x;
+    _jsYCenter = sampled.y;
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Recalibrated center: X=%d Y=%d", _jsXCenter, _jsYCenter);
+    return true;
 }
 
 #endif // !NO_JOYSTICK

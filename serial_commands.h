@@ -161,7 +161,7 @@ struct SerialContext {
     MapperConfig* mapperCfg;       // for speed limit read/write
     Mapper* mapper;                // mapper holds a private config copy; write changes through
     void (*fnEnterOff)();
-    void (*fnRecalibrate)();
+    bool (*fnRecalibrate)();
 #ifdef ENABLE_BATTERY_MONITOR
     int* batteryPct;
 #endif
@@ -1021,7 +1021,9 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             return;
         }
         _scCmdOut("Recalibrating joystick center - keep joystick at rest...");
-        ctx.fnRecalibrate();
+        if (!ctx.fnRecalibrate()) {
+            _scCmdOut("recal: sample rejected (stick off-center or 'cal full' outdated)");
+        }
         return;
     }
 

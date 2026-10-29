@@ -27,6 +27,9 @@ struct Button {
     bool     currentReading;
     uint32_t readingChangeTime;
     bool     pressedEvent;     // consumed by wasPressed()
+    uint32_t pressStartMs;
+    bool     holdConsumed;     // long-press fired or press cancelled: no short-release event
+    bool     shortReleaseEvent; // consumed by wasShortReleased()
 
     // Call once in setup()
     void init() {
@@ -39,6 +42,9 @@ struct Button {
         currentReading = initialState;
         readingChangeTime = 0;
         pressedEvent = false;
+        pressStartMs = 0;
+        holdConsumed = !initialState;  // held at boot: its release is not a press
+        shortReleaseEvent = false;
     }
 
     // Call every loop iteration; updates internal state
@@ -59,6 +65,11 @@ struct Button {
                 if (!lastStableState) {
                     // Transitioned to LOW (pressed)
                     pressedEvent = true;
+                    pressStartMs = now;
+                    holdConsumed = false;
+                }
+                else if (!holdConsumed) {
+                    shortReleaseEvent = true;
                 }
             }
         }
@@ -71,6 +82,31 @@ struct Button {
             return true;
         }
         return false;
+    }
+
+    // True once per release of a press that was not a long-press
+    bool wasShortReleased() {
+        if (shortReleaseEvent) {
+            shortReleaseEvent = false;
+            return true;
+        }
+        return false;
+    }
+
+    // True once per press as soon as it has been held for holdMs;
+    // the release that follows is then not reported as a short press.
+    bool wasHeldFor(uint32_t holdMs) {
+        if (isHeld() && !holdConsumed && (millis() - pressStartMs) >= holdMs) {
+            holdConsumed = true;
+            return true;
+        }
+        return false;
+    }
+
+    // Swallow the current press (e.g. it was part of a button combo)
+    void cancelPress() {
+        holdConsumed = true;
+        shortReleaseEvent = false;
     }
 
     // Current debounced state: true = button is being held down

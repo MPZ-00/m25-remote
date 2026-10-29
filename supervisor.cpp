@@ -30,6 +30,9 @@ Supervisor::Supervisor(Mapper& mapper, const SupervisorConfig& config)
     , _activateHoldStartMs(0)
     , _idleHoldStartMs(0)
     , _armedEntryMs(0)
+    , _lastActiveInputMs(0)
+    , _neutralSinceMs(0)
+    , _neutralConfirmed(false)
     , _lastArmedKeepaliveMs(0)
     , _driveEntryMs(0)
     , _reconnectNotBeforeMs(0)
@@ -212,9 +215,34 @@ void Supervisor::requestDisarm() {
 // ---------------------------------------------------------------------------
 void Supervisor::processInput(const ControlState& control) {
     _lastInputTimeMs = millis();
+    if (!control.isNeutral()) {
+        _lastActiveInputMs = _lastInputTimeMs;
+    }
 
     // Different behavior depending on state
     if (_state == SUPERVISOR_ARMED) {
+        // Neutral interlock: after arming, the stick must rest at neutral before
+        // it can start a drive, so a stick held through arm/reconnect can't lurch the chair.
+        if (!_neutralConfirmed) {
+            if (control.isNeutral()) {
+                if (_neutralSinceMs == 0) {
+                    _neutralSinceMs = millis();
+                }
+                if (millis() - _neutralSinceMs >= ARM_NEUTRAL_HOLD_MS) {
+                    _neutralConfirmed = true;
+                    LOG_INFO(TAG_SUPERVISOR, "Stick neutral - drive enabled");
+                }
+            }
+            else {
+                _neutralSinceMs = 0;
+            }
+            if (!_deadzoneStopLatched) {
+                sendStop();
+                _deadzoneStopLatched = true;
+            }
+            return;
+        }
+
         if (control.deadman && !control.isNeutral()) {
             _deadzoneStopLatched = false;
             // Joystick is out of deadzone: start or check the activate hold timer.
@@ -532,7 +560,7 @@ void Supervisor::handlePaired() {
     pollTelemetry();
 
     // Without AUTO_ARM_ON_CONNECT: wait for explicit requestArm() call
-    // (serial 'arm' command or future hardware button)
+    // (serial 'arm', assist long-press, or stick arm gesture)
 }
 
 void Supervisor::handleArmed() {
@@ -686,12 +714,12 @@ void Supervisor::checkWatchdogs() {
         }
     }
     else if (_state == SUPERVISOR_ARMED) {
-        // Use armIdleTimeoutMs measured from arm entry (or last input, whichever
-        // is more recent) so the user can idle in ARMED intentionally.
-        uint32_t idleRef = (_lastInputTimeMs > _armedEntryMs) ? _lastInputTimeMs : _armedEntryMs;
+        // Measured from the later of arm entry or last stick movement.
+        // _lastInputTimeMs can't be used: processInput() refreshes it every loop.
+        uint32_t idleRef = (_lastActiveInputMs > _armedEntryMs) ? _lastActiveInputMs : _armedEntryMs;
         if (now - idleRef > _config.armIdleTimeoutMs) {
             LOG_INFO(TAG_WATCHDOG, "Arm idle timeout - disarming to PAIRED");
-            transitionTo(SUPERVISOR_PAIRED);
+            requestDisarm();
             return;
         }
     }
@@ -788,6 +816,10 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _activateHoldStartMs = 0;
         _idleHoldStartMs = 0;
         _armedEntryMs = millis();
+        // Coming back from DRIVING the stick already held center for JS_IDLE_HOLD_MS;
+        // every other entry (arm, reconnect) must see neutral first.
+        _neutralConfirmed = (oldState == SUPERVISOR_DRIVING);
+        _neutralSinceMs = 0;
         _lastArmedKeepaliveMs = millis();  // keep-alive fires after one interval, not immediately
         _deadzoneStopLatched = false;
         _driveSessionActive = true;        // suppress telemetry until explicit disarm
@@ -862,7 +894,7 @@ bool Supervisor::isLinkTimeout() const {
 uint32_t Supervisor::getArmedIdleRemainingMs() const {
     if (_state != SUPERVISOR_ARMED || _armedEntryMs == 0) return 0;
     // Count from the later of arm entry or last input, matching checkWatchdogs() logic
-    uint32_t idleRef = (_lastInputTimeMs > _armedEntryMs) ? _lastInputTimeMs : _armedEntryMs;
+    uint32_t idleRef = (_lastActiveInputMs > _armedEntryMs) ? _lastActiveInputMs : _armedEntryMs;
     uint32_t elapsed = millis() - idleRef;
     if (elapsed >= _config.armIdleTimeoutMs) return 0;
     return _config.armIdleTimeoutMs - elapsed;
