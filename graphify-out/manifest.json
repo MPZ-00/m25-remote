@@ -1,406 +1,487 @@
 {
   "Logger.cpp": {
     "mtime": 1785598939.5174048,
+    "seen": 1793316478.0368037,
     "ast_hash": "5ad28c6c774fbd450a12d937321ab21b",
     "semantic_hash": "5ad28c6c774fbd450a12d937321ab21b"
   },
   "Logger.h": {
     "mtime": 1785598939.5184076,
+    "seen": 1793316478.036806,
     "ast_hash": "7bb06e65d697d0f268fb4ff797c4ffb3",
     "semantic_hash": "7bb06e65d697d0f268fb4ff797c4ffb3"
   },
   "archive/m25_wheel_rfcomm/buzzer.h": {
     "mtime": 1785598939.5205116,
+    "seen": 1793316478.0368078,
     "ast_hash": "2a9a44f7cad0e51fcd34c72bd42f3e71",
     "semantic_hash": "2a9a44f7cad0e51fcd34c72bd42f3e71"
   },
   "archive/m25_wheel_rfcomm/cli.h": {
     "mtime": 1785598939.5205116,
+    "seen": 1793316478.0368094,
     "ast_hash": "527db3b768e86c128d3a77a89327afbc",
     "semantic_hash": "527db3b768e86c128d3a77a89327afbc"
   },
   "archive/m25_wheel_rfcomm/command.h": {
     "mtime": 1785598939.5215108,
+    "seen": 1793316478.0368104,
     "ast_hash": "990a212db524643dac258bc0aa06c187",
     "semantic_hash": "990a212db524643dac258bc0aa06c187"
   },
   "archive/m25_wheel_rfcomm/config.h": {
     "mtime": 1785598939.5215108,
+    "seen": 1793316478.036812,
     "ast_hash": "df0eb5e6d0af1e6516edc4f0946c7c3d",
     "semantic_hash": "df0eb5e6d0af1e6516edc4f0946c7c3d"
   },
   "archive/m25_wheel_rfcomm/crypto.h": {
     "mtime": 1785598939.5215108,
+    "seen": 1793316478.036813,
     "ast_hash": "e54c8ab000b17f8d45c6e22e8f21983c",
     "semantic_hash": "e54c8ab000b17f8d45c6e22e8f21983c"
   },
   "archive/m25_wheel_rfcomm/led.h": {
     "mtime": 1785598939.5225117,
+    "seen": 1793316478.036814,
     "ast_hash": "3496b3580725039a375f5e47f1c56856",
     "semantic_hash": "3496b3580725039a375f5e47f1c56856"
   },
   "archive/m25_wheel_rfcomm/load_env.py": {
     "mtime": 1785598939.5225117,
+    "seen": 1793316478.036815,
     "ast_hash": "039a61e7e6c25f1f5da1d918685511d1",
     "semantic_hash": "039a61e7e6c25f1f5da1d918685511d1"
   },
   "archive/m25_wheel_rfcomm/nvs_config.h": {
     "mtime": 1785598939.5225117,
+    "seen": 1793316478.0368156,
     "ast_hash": "67e97e0b22aaf501b7116d8c46b65778",
     "semantic_hash": "67e97e0b22aaf501b7116d8c46b65778"
   },
   "archive/m25_wheel_rfcomm/packet.h": {
     "mtime": 1785598939.5225117,
+    "seen": 1793316478.0368166,
     "ast_hash": "4a357e6fd892d1ca7a523e00cc1b733c",
     "semantic_hash": "4a357e6fd892d1ca7a523e00cc1b733c"
   },
   "archive/m25_wheel_rfcomm/protocol.h": {
     "mtime": 1785598939.524015,
+    "seen": 1793316478.0368173,
     "ast_hash": "5b4c241f96b4a55b8add3a9482c96dc4",
     "semantic_hash": "5b4c241f96b4a55b8add3a9482c96dc4"
   },
   "archive/m25_wheel_rfcomm/safety.h": {
     "mtime": 1785598939.524015,
+    "seen": 1793316478.0368183,
     "ast_hash": "462949cbd9aad674007ff7127189371e",
     "semantic_hash": "462949cbd9aad674007ff7127189371e"
   },
   "archive/m25_wheel_rfcomm/state.h": {
     "mtime": 1785598939.5250206,
+    "seen": 1793316478.036819,
     "ast_hash": "0b6c6bf46b11fc904267d67a42ba3856",
     "semantic_hash": "0b6c6bf46b11fc904267d67a42ba3856"
   },
   "archive/m25_wheel_rfcomm/transport_ble.h": {
     "mtime": 1785598939.5250206,
+    "seen": 1793316478.0368197,
     "ast_hash": "92aa33b6d2eab6b1bd337f545d366655",
     "semantic_hash": "92aa33b6d2eab6b1bd337f545d366655"
   },
   "archive/m25_wheel_rfcomm/transport_rfcomm.h": {
     "mtime": 1785598939.5250206,
+    "seen": 1793316478.0368207,
     "ast_hash": "97109073d220d3c4254d4299b974b004",
     "semantic_hash": "97109073d220d3c4254d4299b974b004"
   },
   "archive/wifi_joystick/ble_scanner.h": {
     "mtime": 1785598939.5265248,
+    "seen": 1793316478.0368216,
     "ast_hash": "2baafd8bf2f630aad308df4d3c77ea8c",
     "semantic_hash": "2baafd8bf2f630aad308df4d3c77ea8c"
   },
   "archive/wifi_joystick/device_config.h": {
     "mtime": 1785598939.5275288,
+    "seen": 1793316478.0368226,
     "ast_hash": "8b6e2adc6fb3520e107e0ae4839876a6",
     "semantic_hash": "8b6e2adc6fb3520e107e0ae4839876a6"
   },
   "archive/wifi_joystick/encryption.h": {
     "mtime": 1785598939.5275288,
+    "seen": 1793316478.0368233,
     "ast_hash": "32c16853219249bc4d41beea8fa12b5c",
     "semantic_hash": "32c16853219249bc4d41beea8fa12b5c"
   },
   "archive/wifi_joystick/fancy_light.h": {
     "mtime": 1785598939.5275288,
+    "seen": 1793316478.036824,
     "ast_hash": "3d2d45c7d866bf6c7ab918c82b467976",
     "semantic_hash": "3d2d45c7d866bf6c7ab918c82b467976"
   },
   "archive/wifi_joystick/index_html.h": {
     "mtime": 1785598939.5285318,
+    "seen": 1793316478.0368252,
     "ast_hash": "2385daacc2227a968e6e289b5a136d2c",
     "semantic_hash": "2385daacc2227a968e6e289b5a136d2c"
   },
   "archive/wifi_joystick/joystick_input.h": {
     "mtime": 1785598939.5285318,
+    "seen": 1793316478.036826,
     "ast_hash": "4462ebd43775c163474babc161152e69",
     "semantic_hash": "4462ebd43775c163474babc161152e69"
   },
   "archive/wifi_joystick/serial_commands.h": {
     "mtime": 1785598939.5285318,
+    "seen": 1793316478.0368268,
     "ast_hash": "ce795de37caee1ae343157ec310d3e91",
     "semantic_hash": "ce795de37caee1ae343157ec310d3e91"
   },
   "archive/wifi_joystick/websocket_handlers.h": {
     "mtime": 1785598939.5285318,
+    "seen": 1793316478.0368276,
     "ast_hash": "cfa85587ca27cb230661b09130970806",
     "semantic_hash": "cfa85587ca27cb230661b09130970806"
   },
   "archive/wifi_joystick/wheel_command.h": {
     "mtime": 1785598939.529723,
+    "seen": 1793316478.0368285,
     "ast_hash": "24789c6487a237cded256f42debc3ac0",
     "semantic_hash": "24789c6487a237cded256f42debc3ac0"
   },
   "button.h": {
     "mtime": 1793316244.7250187,
+    "seen": 1793316478.0368314,
     "ast_hash": "201ab565f5d2b23779f8e4a653db0998",
     "semantic_hash": ""
   },
   "buzzer.h": {
     "mtime": 1785598939.5307212,
+    "seen": 1793316478.0368323,
     "ast_hash": "2e1d2a53189fd99e2d06858f2d4e7499",
     "semantic_hash": "2e1d2a53189fd99e2d06858f2d4e7499"
   },
   "constants.h": {
     "mtime": 1785598939.5307212,
+    "seen": 1793316478.0368333,
     "ast_hash": "afd67527f337828325a0566dab74bb91",
     "semantic_hash": "afd67527f337828325a0566dab74bb91"
   },
   "device_config.h": {
     "mtime": 1793316233.6588576,
+    "seen": 1793316478.0368338,
     "ast_hash": "1cb79af90bbc2cef7944fa6db06fcb17",
     "semantic_hash": ""
   },
   "fake_wheel/buzzer_control.h": {
     "mtime": 1785598939.536735,
+    "seen": 1793316478.0368364,
     "ast_hash": "cb484ff36eb0e0dadf3f27e7d3b6eb3b",
     "semantic_hash": "cb484ff36eb0e0dadf3f27e7d3b6eb3b"
   },
   "fake_wheel/command_handler.h": {
     "mtime": 1785598939.536735,
+    "seen": 1793316478.0368373,
     "ast_hash": "2d608a759be6e66f09cb6983651af75b",
     "semantic_hash": "2d608a759be6e66f09cb6983651af75b"
   },
   "fake_wheel/device_config.h": {
     "mtime": 1785598939.536735,
+    "seen": 1793316478.036838,
     "ast_hash": "f477098b8e03b2359ede3dac2a16dcf7",
     "semantic_hash": "f477098b8e03b2359ede3dac2a16dcf7"
   },
   "fake_wheel/led_control.h": {
     "mtime": 1785598939.5382385,
+    "seen": 1793316478.036839,
     "ast_hash": "811a5e6e5cffc01e6182102b067d25b7",
     "semantic_hash": "811a5e6e5cffc01e6182102b067d25b7"
   },
   "fake_wheel/m25_protocol.h": {
     "mtime": 1785598939.5382385,
+    "seen": 1793316478.0368397,
     "ast_hash": "020d361b476d6c30d998e2c5680fda7a",
     "semantic_hash": "020d361b476d6c30d998e2c5680fda7a"
   },
   "fake_wheel/wheel_state.h": {
     "mtime": 1785598939.5382385,
+    "seen": 1793316478.0368404,
     "ast_hash": "47d72e75365c553976b3440e01fae0a7",
     "semantic_hash": "47d72e75365c553976b3440e01fae0a7"
   },
   "joystick.h": {
     "mtime": 1793316235.7862754,
+    "seen": 1793316478.0368414,
     "ast_hash": "73822386491d0f953dfbc50e4723abb3",
     "semantic_hash": ""
   },
   "led_control.h": {
     "mtime": 1793316236.7927608,
+    "seen": 1793316478.0368423,
     "ast_hash": "c96b0acda57df074552b322c40bdaf40",
     "semantic_hash": ""
   },
   "load_env.py": {
     "mtime": 1785598939.9848666,
+    "seen": 1793316478.0368433,
     "ast_hash": "bf1a21a0ed7f4e93bf527bc0a39659e8",
     "semantic_hash": "bf1a21a0ed7f4e93bf527bc0a39659e8"
   },
   "m25_ble.cpp": {
     "mtime": 1785598939.9858668,
+    "seen": 1793316478.036844,
     "ast_hash": "f47664786214949e31e0b2636655d743",
     "semantic_hash": ""
   },
   "m25_ble.h": {
     "mtime": 1785598939.9858668,
+    "seen": 1793316478.0368447,
     "ast_hash": "f01de21d426974d5152ee628b8e1d892",
     "semantic_hash": "f01de21d426974d5152ee628b8e1d892"
   },
   "mapper.cpp": {
     "mtime": 1785598939.986868,
+    "seen": 1793316478.0368462,
     "ast_hash": "6af2f1dbaf51a21f156e2abc0cc30bd9",
     "semantic_hash": ""
   },
   "mapper.h": {
     "mtime": 1785598939.986868,
+    "seen": 1793316478.036847,
     "ast_hash": "29a230f240a7c4c8c1e9d2a2e5b96a9d",
     "semantic_hash": "29a230f240a7c4c8c1e9d2a2e5b96a9d"
   },
   "motor_control.h": {
     "mtime": 1785598939.986868,
+    "seen": 1793316478.0368478,
     "ast_hash": "2ade551d9ebc887b75d8fdc01f0447c2",
     "semantic_hash": "2ade551d9ebc887b75d8fdc01f0447c2"
   },
   "nvs_config.h": {
     "mtime": 1793316246.2648704,
+    "seen": 1793316478.0368488,
     "ast_hash": "4d8114dc36797301b5bbc96814b3cd9c",
     "semantic_hash": ""
   },
   "profiles.h": {
     "mtime": 1785598939.988371,
+    "seen": 1793316478.0368495,
     "ast_hash": "1f90502a658d40ff9894f78f848ea1f4",
     "semantic_hash": "1f90502a658d40ff9894f78f848ea1f4"
   },
   "serial_commands.h": {
     "mtime": 1793316239.5279298,
+    "seen": 1793316478.0368502,
     "ast_hash": "e97e068dacc49bd157a19e75bd1db071",
     "semantic_hash": ""
   },
   "supervisor.cpp": {
     "mtime": 1793316241.0763202,
+    "seen": 1793316478.036851,
     "ast_hash": "97d6d80e8abf8914c5a8c274e73d0746",
     "semantic_hash": ""
   },
   "supervisor.h": {
     "mtime": 1793316243.174362,
+    "seen": 1793316478.0368516,
     "ast_hash": "513e542b8a418ff64290010930c5c388",
     "semantic_hash": ""
   },
   "suppress_bt_pragma.h": {
     "mtime": 1785598939.990376,
+    "seen": 1793316478.0368521,
     "ast_hash": "b4572d899e04bdee4d327111397f04bc",
     "semantic_hash": "b4572d899e04bdee4d327111397f04bc"
   },
   "tests/prepare_test.ps1": {
     "mtime": 1785598939.9913762,
+    "seen": 1793316478.036853,
     "ast_hash": "710489082c99f4c64abb22514fc004d1",
     "semantic_hash": "710489082c99f4c64abb22514fc004d1"
   },
   "tests/run_tests.ps1": {
     "mtime": 1785598939.9913762,
+    "seen": 1793316478.0368538,
     "ast_hash": "9e132e97728fb764dc9896dd632fd288",
     "semantic_hash": "9e132e97728fb764dc9896dd632fd288"
   },
   "tests/test_base.h": {
     "mtime": 1785598939.9913762,
+    "seen": 1793316478.0368547,
     "ast_hash": "87559c5d451986123df999764283cf07",
     "semantic_hash": "87559c5d451986123df999764283cf07"
   },
   "tools/compare_tx_spp.py": {
     "mtime": 1785598939.9963799,
+    "seen": 1793316478.0368552,
     "ast_hash": "153fa7f7242224e900a7f13171bcd233",
     "semantic_hash": "153fa7f7242224e900a7f13171bcd233"
   },
   "tools/generate_constants.py": {
     "mtime": 1785598939.9963799,
+    "seen": 1793316478.0368564,
     "ast_hash": "2d0e895e62ee75f2272424a603d479db",
     "semantic_hash": "2d0e895e62ee75f2272424a603d479db"
   },
   "tools/generate_profiles.py": {
     "mtime": 1785598939.9963799,
+    "seen": 1793316478.0368576,
     "ast_hash": "845126300673233750ab46f44dadac7d",
     "semantic_hash": "845126300673233750ab46f44dadac7d"
   },
   "tools/generate_tests.py": {
     "mtime": 1785598939.9978838,
+    "seen": 1793316478.0368583,
     "ast_hash": "7dde8c4fc4ab9f3fb92e6307a519ca4c",
     "semantic_hash": "7dde8c4fc4ab9f3fb92e6307a519ca4c"
   },
   "types.h": {
     "mtime": 1785598939.9983978,
+    "seen": 1793316478.036859,
     "ast_hash": "cb3e08eef6da567b9f8b593d104d4e88",
     "semantic_hash": ""
   },
   "version.h": {
     "mtime": 1785598939.9983978,
+    "seen": 1793316478.03686,
     "ast_hash": "fe5f56775b6da2560e80139ca9af9961",
     "semantic_hash": "fe5f56775b6da2560e80139ca9af9961"
   },
   "version.py": {
     "mtime": 1785598939.9983978,
+    "seen": 1793316478.0368605,
     "ast_hash": "bc959347f74bf4b4067d5a974323d84e",
     "semantic_hash": "bc959347f74bf4b4067d5a974323d84e"
   },
   "CLAUDE.md": {
     "mtime": 1785598939.5174048,
+    "seen": 1793316478.0368614,
     "ast_hash": "a7fecfb5c7acb481295747000502e1d9",
     "semantic_hash": "a7fecfb5c7acb481295747000502e1d9"
   },
   "README.md": {
     "mtime": 1785598939.5184076,
+    "seen": 1793316478.0368621,
     "ast_hash": "c1447039cebedeba1e8765f47266717a",
     "semantic_hash": "c1447039cebedeba1e8765f47266717a"
   },
   "ROADMAP.md": {
     "mtime": 1785598939.5184076,
+    "seen": 1793316478.0368633,
     "ast_hash": "5d7d7cf7742485e4c3cb4d1ab7755dbf",
     "semantic_hash": "5d7d7cf7742485e4c3cb4d1ab7755dbf"
   },
   "archive/m25_wheel_rfcomm/README.md": {
     "mtime": 1785598939.5195098,
+    "seen": 1793316478.036864,
     "ast_hash": "4b9e96a3f10b25f297ba963bb906e345",
     "semantic_hash": "4b9e96a3f10b25f297ba963bb906e345"
   },
   "archive/wifi_joystick/JOYSTICK_SETUP.md": {
     "mtime": 1785598939.5250206,
+    "seen": 1793316478.0368648,
     "ast_hash": "0d5fd73eea3b6783dc779b531dcae5a2",
     "semantic_hash": "0d5fd73eea3b6783dc779b531dcae5a2"
   },
   "archive/wifi_joystick/README.md": {
     "mtime": 1785598939.5250206,
+    "seen": 1793316478.0368655,
     "ast_hash": "6bc782613928179fc5d3aa956dcfdeeb",
     "semantic_hash": "6bc782613928179fc5d3aa956dcfdeeb"
   },
   "archive/wifi_joystick/data/index.html": {
     "mtime": 1785598939.5265248,
+    "seen": 1793316478.0368662,
     "ast_hash": "ac244fd5c377e8b4cb3004afa6cb9223",
     "semantic_hash": "ac244fd5c377e8b4cb3004afa6cb9223"
   },
   "doc/ble-cross-platform.md": {
     "mtime": 1785598939.5317225,
+    "seen": 1793316478.0368671,
     "ast_hash": "761d761d1a4ac00e7b914c2c349e578c",
     "semantic_hash": "761d761d1a4ac00e7b914c2c349e578c"
   },
   "doc/ble-notifications-how-it-works.md": {
     "mtime": 1785598939.5317225,
+    "seen": 1793316478.036868,
     "ast_hash": "e1295ae2795a008fdb174fcf369e97e5",
     "semantic_hash": "e1295ae2795a008fdb174fcf369e97e5"
   },
   "doc/esp32-remote-design-spec.md": {
     "mtime": 1785598939.5317225,
+    "seen": 1793316478.036869,
     "ast_hash": "a15faa25738b1623084cfbd11375d0d3",
     "semantic_hash": "a15faa25738b1623084cfbd11375d0d3"
   },
   "doc/esp32-setup.md": {
     "mtime": 1785598939.5327225,
+    "seen": 1793316478.03687,
     "ast_hash": "436fcdbb3343ae6e2707140795d1610c",
     "semantic_hash": "436fcdbb3343ae6e2707140795d1610c"
   },
   "doc/m25-protocol.md": {
     "mtime": 1785598939.5327225,
+    "seen": 1793316478.0368707,
     "ast_hash": "b7eb414685fe7b3c0b57f964f2b23703",
     "semantic_hash": "b7eb414685fe7b3c0b57f964f2b23703"
   },
   "doc/remote-control-design.md": {
     "mtime": 1785598939.5327225,
+    "seen": 1793316478.0368717,
     "ast_hash": "04ae29de7f58bb6f533c9bcfe48282c8",
     "semantic_hash": "04ae29de7f58bb6f533c9bcfe48282c8"
   },
   "fake_wheel/README.md": {
     "mtime": 1785598939.536735,
+    "seen": 1793316478.0368736,
     "ast_hash": "a8ffc356c398ec545b62bb58c3d80624",
     "semantic_hash": "a8ffc356c398ec545b62bb58c3d80624"
   },
   "tests/HARDWARE_SETUP.md": {
     "mtime": 1785598939.990376,
+    "seen": 1793316478.0368745,
     "ast_hash": "e8097a3c76b3be99be5fae926e019e55",
     "semantic_hash": "e8097a3c76b3be99be5fae926e019e55"
   },
   "tests/README.md": {
     "mtime": 1785598939.990376,
+    "seen": 1793316478.0368752,
     "ast_hash": "1668ae85dd210ca15da328a1378c988a",
     "semantic_hash": "1668ae85dd210ca15da328a1378c988a"
   },
   "tools/README.md": {
     "mtime": 1785598939.9963799,
+    "seen": 1793316478.0368762,
     "ast_hash": "ebdd998d5526bf614b03061046736185",
     "semantic_hash": "ebdd998d5526bf614b03061046736185"
   },
   "arm_gesture.h": {
     "mtime": 1793316245.772034,
+    "seen": 1793316478.0368302,
     "ast_hash": "99b9b3190ff379458d255c477c3a49e5",
     "semantic_hash": ""
   },
   "enclosure/fusion_scripts/M25EnclosureLayoutGrid/M25EnclosureLayoutGrid.py": {
     "mtime": 1785598939.5347352,
+    "seen": 1793316478.0368347,
     "ast_hash": "0c070e28cb09f90708557285a5cfc496",
     "semantic_hash": ""
   },
   "enclosure/fusion_scripts/M25EnclosureLayoutRow/M25EnclosureLayoutRow.py": {
     "mtime": 1785598939.535735,
+    "seen": 1793316478.0368357,
     "ast_hash": "48a829084788ca40a43754e64268ed7a",
     "semantic_hash": ""
   },
   ".github/workflows/mirror-to-6static.yml": {
     "mtime": 1785959844.1368792,
+    "seen": 1793316478.0367978,
     "ast_hash": "98bf62fc313f2cd769127e9bb7741ce6",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-07-26-remote-control-redesign-design.md": {
     "mtime": 1785598939.533737,
+    "seen": 1793316478.0368726,
     "ast_hash": "3b407cd75f3fc91d41c6d52320ec1764",
     "semantic_hash": ""
   }
