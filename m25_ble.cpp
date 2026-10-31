@@ -2202,7 +2202,8 @@ void bleFullReset() {
     // Let Bluedroid finish teardown before deinit
     delay(200);
 #if M25_TRANSPORT_BLE
-    BLEDevice::deinit(true);
+    // true would release controller memory, after which the stack can never init again until reboot
+    BLEDevice::deinit(false);
 #endif
 #if M25_TRANSPORT_RFCOMM
     esp_spp_deinit();
