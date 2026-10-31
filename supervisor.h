@@ -96,6 +96,8 @@ public:
     // Arm on BLE connect only; a disarm stays disarmed
     void setAutoArm(bool enabled) { _autoArm = enabled; }
     bool isAutoArm() const { return _autoArm; }
+
+    void setArmIdleTimeoutMs(uint32_t ms) { _config.armIdleTimeoutMs = ms; }
     
     /**
      * Request disarm (ARMED or DRIVING -> PAIRED)

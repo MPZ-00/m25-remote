@@ -220,6 +220,23 @@ inline bool nvsLoadJsDeadzone(uint8_t* pct) {
     return false;
 }
 
+inline bool nvsSaveU16(const char* key, uint16_t v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUShort(key, v) == 2;
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadU16(const char* key, uint16_t* v) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool found = p.isKey(key);
+    if (found) *v = p.getUShort(key, 0);
+    p.end();
+    return found;
+}
+
 // bit0 swap X/Y, bit1 invert X, bit2 invert Y
 inline bool nvsSaveJsMap(uint8_t map) {
     Preferences p;

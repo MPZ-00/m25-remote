@@ -278,6 +278,8 @@ static bool powerOnSafetyCheck() {
     return false;
 }
 
+static uint32_t armHoldMs = ARM_BUTTON_HOLD_MS;
+
 static SerialContext _serialCtx = {
     &sysState,
     &assistLevel,
@@ -287,6 +289,7 @@ static SerialContext _serialCtx = {
     &mapper,
     enterOff,
     joystickRecalibrate,
+    &armHoldMs,
 #ifdef ENABLE_BATTERY_MONITOR
     & batteryPct,
 #endif
@@ -362,6 +365,9 @@ void setup() {
             supervisor.setAutoArm(autoArm);
             LOG_INFO(TAG_BOOT, "Auto-arm loaded from NVS: %s", autoArm ? "on" : "off");
         }
+        uint16_t v = 0;
+        if (nvsLoadU16("arm_hold", &v) && v >= 300 && v <= 5000) armHoldMs = v;
+        if (nvsLoadU16("idle_dis", &v) && v >= 10 && v <= 1800) supervisor.setArmIdleTimeoutMs((uint32_t)v * 1000);
     }
 
     sysState = STATE_BOOT;
@@ -482,7 +488,7 @@ void loop() {
     bool assistPressed = btnAssist.wasPressed();
     // Assist: short press = cycle level/feel (on release), long hold = arm toggle
     bool assistShort = btnAssist.wasShortReleased();
-    bool assistLong = btnAssist.wasHeldFor(ARM_BUTTON_HOLD_MS);
+    bool assistLong = btnAssist.wasHeldFor(armHoldMs);
     bool powerPressed = btnPower.wasPressed();
 
     if (estopPressed) {

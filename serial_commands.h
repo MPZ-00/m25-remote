@@ -25,6 +25,8 @@
  *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right; samples 1200ms once deflected)
  *   deadzone [3-30]             Show/set joystick deadzone in % of travel (NVS)
  *   autoarm [on|off]            Show/set arm on BLE connect (NVS)
+ *   armhold [300-5000]          Show/set assist hold ms for arm/disarm (NVS)
+ *   idledisarm [10-1800]        Show/set idle auto-disarm seconds (NVS)
  *   selftest                    Schedule hardware self-test for next boot (NVS)
  *   fwd [speed] [ms]            Drive straight forward at speed% for ms (default 30%% 2000ms, max 5s)
  *   bwd [speed] [ms]            Drive straight backward (same defaults)
@@ -166,6 +168,7 @@ struct SerialContext {
     Mapper* mapper;                // mapper holds a private config copy; write changes through
     void (*fnEnterOff)();
     bool (*fnRecalibrate)();
+    uint32_t* armHoldMs;
 #ifdef ENABLE_BATTERY_MONITOR
     int* batteryPct;
 #endif
@@ -262,6 +265,8 @@ static void _scPrintHelp() {
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
     _scCmdOut("  deadzone [3-30]           Show or set joystick deadzone in %% of travel (persisted)");
     _scCmdOut("  autoarm [on|off]          Arm automatically on connect (persisted)");
+    _scCmdOut("  armhold [300-5000]        Assist hold time in ms to arm/disarm (persisted)");
+    _scCmdOut("  idledisarm [10-1800]      Seconds of untouched stick before auto-disarm (persisted)");
     _scCmdOut("  selftest                  Run LED/button/joystick self-test on next boot");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
@@ -1232,6 +1237,42 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         bool saved = nvsSaveAutoArm(on);
         _scCmdOutf("autoarm: %s %s (applies on next connect)", on ? "on" : "off",
             saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+        return;
+    }
+
+    // armhold [ms]
+    if (strcmp(cmd, "armhold") == 0 || strncmp(cmd, "armhold ", 8) == 0) {
+        if (!ctx.armHoldMs) return;
+        if (cmd[7] == '\0') {
+            _scCmdOutf("armhold: %lu ms", (unsigned long)*ctx.armHoldMs);
+            return;
+        }
+        int v = atoi(cmd + 8);
+        if (v < 300 || v > 5000) {
+            _scCmdOut("armhold: use 300-5000 (ms)");
+            return;
+        }
+        *ctx.armHoldMs = (uint32_t)v;
+        bool saved = nvsSaveU16("arm_hold", (uint16_t)v);
+        _scCmdOutf("armhold: %d ms %s", v, saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+        return;
+    }
+
+    // idledisarm [s]
+    if (strcmp(cmd, "idledisarm") == 0 || strncmp(cmd, "idledisarm ", 11) == 0) {
+        if (!ctx.supervisor) return;
+        if (cmd[10] == '\0') {
+            _scCmdOutf("idledisarm: %lu s", (unsigned long)(ctx.supervisor->getConfig().armIdleTimeoutMs / 1000));
+            return;
+        }
+        int v = atoi(cmd + 11);
+        if (v < 10 || v > 1800) {
+            _scCmdOut("idledisarm: use 10-1800 (seconds)");
+            return;
+        }
+        ctx.supervisor->setArmIdleTimeoutMs((uint32_t)v * 1000);
+        bool saved = nvsSaveU16("idle_dis", (uint16_t)v);
+        _scCmdOutf("idledisarm: %d s %s", v, saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
         return;
     }
 
