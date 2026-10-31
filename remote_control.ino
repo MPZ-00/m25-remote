@@ -358,7 +358,7 @@ void setup() {
     }
     if (nvsSelfTestPending()) {
         SelfTestResult r = selfTestRun();
-        if (r != SELFTEST_FAIL) nvsSaveSelfTestDone(true);
+        if (r != SELFTEST_FAIL && r != SELFTEST_POSTPONED) nvsSaveSelfTestDone(true);
     }
     supervisor.setArmInhibit(!joystickHasRangeCalibration());
     {
