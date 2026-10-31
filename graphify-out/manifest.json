@@ -258,9 +258,9 @@
     "semantic_hash": "2ade551d9ebc887b75d8fdc01f0447c2"
   },
   "nvs_config.h": {
-    "mtime": 1793480206.1288903,
-    "seen": 1793480286.1209602,
-    "ast_hash": "79986e79db4b04ed19f2f39b07df54ee",
+    "mtime": 1793483121.466066,
+    "seen": 1793483174.7386036,
+    "ast_hash": "862350f6d39c3c771596772fc44c3e9f",
     "semantic_hash": ""
   },
   "profiles.h": {
@@ -270,9 +270,9 @@
     "semantic_hash": "1f90502a658d40ff9894f78f848ea1f4"
   },
   "serial_commands.h": {
-    "mtime": 1793480263.209192,
-    "seen": 1793480286.120963,
-    "ast_hash": "6ecc7ee6b580691c1b7f182a2239d54a",
+    "mtime": 1793483143.0178535,
+    "seen": 1793483174.7386067,
+    "ast_hash": "e3841614acafc54d713ab136bd8c9e88",
     "semantic_hash": ""
   },
   "supervisor.cpp": {
@@ -282,9 +282,9 @@
     "semantic_hash": ""
   },
   "supervisor.h": {
-    "mtime": 1793477839.0053732,
-    "seen": 1793478362.0923023,
-    "ast_hash": "3d1a50f5b8e359abdeecb7329655bbc0",
+    "mtime": 1793483121.4650626,
+    "seen": 1793483174.7386084,
+    "ast_hash": "8813259c998840ca48a54a0d8556542d",
     "semantic_hash": ""
   },
   "suppress_bt_pragma.h": {
