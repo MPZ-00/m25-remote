@@ -1,15 +1,15 @@
 {
   "Logger.cpp": {
-    "mtime": 1785598939.5174048,
-    "seen": 1793316478.0368037,
-    "ast_hash": "5ad28c6c774fbd450a12d937321ab21b",
-    "semantic_hash": "5ad28c6c774fbd450a12d937321ab21b"
+    "mtime": 1793483250.0418534,
+    "seen": 1793483372.3728096,
+    "ast_hash": "349d1d77cfb57a6664114ff013ad2ba9",
+    "semantic_hash": ""
   },
   "Logger.h": {
-    "mtime": 1785598939.5184076,
-    "seen": 1793316478.036806,
-    "ast_hash": "7bb06e65d697d0f268fb4ff797c4ffb3",
-    "semantic_hash": "7bb06e65d697d0f268fb4ff797c4ffb3"
+    "mtime": 1793483239.4503782,
+    "seen": 1793483372.3728123,
+    "ast_hash": "6a7b3bddd158d835274916609e7532cd",
+    "semantic_hash": ""
   },
   "archive/m25_wheel_rfcomm/buzzer.h": {
     "mtime": 1785598939.5205116,
@@ -270,9 +270,9 @@
     "semantic_hash": "1f90502a658d40ff9894f78f848ea1f4"
   },
   "serial_commands.h": {
-    "mtime": 1793483143.0178535,
-    "seen": 1793483174.7386067,
-    "ast_hash": "e3841614acafc54d713ab136bd8c9e88",
+    "mtime": 1793483300.4380398,
+    "seen": 1793483372.372857,
+    "ast_hash": "c083b1589ddcfe8488e49e89a859f16e",
     "semantic_hash": ""
   },
   "supervisor.cpp": {
@@ -354,9 +354,9 @@
     "semantic_hash": "bc959347f74bf4b4067d5a974323d84e"
   },
   "CLAUDE.md": {
-    "mtime": 1793478357.0043287,
-    "seen": 1793478362.0923111,
-    "ast_hash": "18411761d450d1da55567fa8988c863b",
+    "mtime": 1793483359.5062673,
+    "seen": 1793483372.3728678,
+    "ast_hash": "066cf60c8a4f37f0a7805290c9db2d3a",
     "semantic_hash": ""
   },
   "README.md": {
@@ -486,9 +486,15 @@
     "semantic_hash": ""
   },
   "selftest.h": {
-    "mtime": 1793479329.3445072,
-    "seen": 1793479361.6872833,
-    "ast_hash": "36f2011275665b82165f8e78204b7f20",
+    "mtime": 1793483300.9844124,
+    "seen": 1793483372.3728564,
+    "ast_hash": "1e9c5f121d14f8069b88c7a72c923fc9",
+    "semantic_hash": ""
+  },
+  "eventlog.h": {
+    "mtime": 1793483272.7256112,
+    "seen": 1793483372.372842,
+    "ast_hash": "d34b3a7f34829005f847543c1364287e",
     "semantic_hash": ""
   }
 }
