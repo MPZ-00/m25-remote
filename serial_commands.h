@@ -22,7 +22,7 @@
  *   assist <0|1|2>              Set assist level  0=indoor  1=outdoor  2=learning  (persisted to NVS)
  *   hillhold <on|off>           Toggle hill hold (only when motors stopped)
  *   recal                       Recalibrate joystick center position
- *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right, 600ms grace + 1200ms sample each)
+ *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right; samples 1200ms once deflected)
  *   deadzone [3-30]             Show/set joystick deadzone in % of travel (NVS)
  *   autoarm [on|off]            Show/set arm on BLE connect (NVS)
  *   selftest                    Schedule hardware self-test for next boot (NVS)
@@ -486,11 +486,37 @@ static bool _scCalWaitForCenter(unsigned long timeoutMs) {
     return false;
 }
 
+// Self-paced: sampling starts once the stick is deflected, so slow hands don't miss the window
+static bool _scCalWaitForDeflection(bool yAxis, bool wantMax, unsigned long timeoutMs) {
+    const int ctr = yAxis ? _jsYCenter : _jsXCenter;
+    unsigned long start = millis();
+    while (millis() - start < timeoutMs) {
+        JoystickRaw r = joystickReadRaw();
+        int v = yAxis ? r.y : r.x;
+        if ((wantMax ? v - ctr : ctr - v) >= JOYSTICK_MIN_HALF_SPAN) return true;
+        _scCalWait(10);
+    }
+    return false;
+}
+
+// Near the pre-cal center; the range isn't known yet, so half the minimum span is the bar
+static bool _scCalWaitForRelease(unsigned long timeoutMs) {
+    const int tol = JOYSTICK_MIN_HALF_SPAN / 2;
+    unsigned long start = millis();
+    while (millis() - start < timeoutMs) {
+        JoystickRaw r = joystickReadRaw();
+        if (abs(r.x - _jsXCenter) < tol && abs(r.y - _jsYCenter) < tol) return true;
+        _scCalWait(10);
+    }
+    return false;
+}
+
 // Returns the extreme of the requested axis; deviations are measured from the boot center
-static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax,
-                      unsigned long graceMs, unsigned long holdMs) {
+static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax, unsigned long holdMs) {
     _scCmdOutf("[Cal] Step %d/4 --- Push stick %s and hold ---", step, label);
-    _scCalWait(graceMs);
+    if (!_scCalWaitForDeflection(yAxis, wantMax, 15000)) {
+        _scCmdOut("[Cal]   no deflection seen in 15s - sampling anyway");
+    }
     _scCmdOut("[Cal]   sampling...");
     JoystickRaw lo, hi;
     joystickSampleExtremes(holdMs, lo, hi);
@@ -517,16 +543,18 @@ static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax,
         _scCmdOutf("[Cal]   WARNING: barely moved (need %d) - check joystick VCC, GND and signal wire",
             JOYSTICK_MIN_HALF_SPAN);
     }
+    if (step < 4) {
+        _scCmdOut("[Cal]   release to center");
+        _scCalWaitForRelease(5000);
+    }
     return v;
 }
 // Shared by 'cal full' and the boot self-test; sup may be null (boot sets the arm lock itself)
 static bool _scRunFullCal(unsigned long holdMs, Supervisor* sup) {
-    const unsigned long graceMs = 600;
-
-    int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, graceMs, holdMs);
-    int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, graceMs, holdMs);
-    int xMin = _scCalStep(3, "LEFT", false, false, graceMs, holdMs);
-    int xMax = _scCalStep(4, "RIGHT", false, true, graceMs, holdMs);
+    int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, holdMs);
+    int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, holdMs);
+    int xMin = _scCalStep(3, "LEFT", false, false, holdMs);
+    int xMax = _scCalStep(4, "RIGHT", false, true, holdMs);
 
     _scCmdOut("[Cal] Return stick to CENTER and let go");
 
@@ -1189,7 +1217,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     }
 
     // cal full [hold_ms]
-    // Step-by-step directional calibration.  Each step: grace pause -> sample.
+    // Step-by-step directional calibration.  Each step: wait for deflection -> sample -> release.
     // hold_ms = sampling window per direction (default 1200 ms).
     if (strcmp(cmd, "cal full") == 0 || strncmp(cmd, "cal full ", 9) == 0) {
 #ifdef NO_JOYSTICK

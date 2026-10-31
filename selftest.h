@@ -81,6 +81,21 @@ static void _stWaitRelease() {
     }
 }
 
+// Tester sets the pace between steps; any button, since one may be missing
+static void _stWaitForAnyPress() {
+    _stClearButtonEvents();
+    while (true) {
+        buttonsTick();
+        buzzerTick();
+        if (btnEstop.wasPressed() | btnHillHold.wasPressed()
+            | btnAssist.wasPressed() | btnPower.wasPressed()) break;
+        delay(5);
+    }
+    buzzerPlay(BUZZ_BUTTON);
+    _stWaitRelease();
+    _stClearButtonEvents();
+}
+
 static bool _stLedPhase() {
     _stLog("Step 1/3: LEDs - all on, then one by one. Watch that each lights. A beep plays now.");
     buzzerPlay(BUZZ_BUTTON);
@@ -176,7 +191,9 @@ static SelfTestResult selfTestRun() {
     }
 #ifndef NO_JOYSTICK
     if (result == SELFTEST_PASS || result == SELFTEST_PARTIAL) {
-        _stLog("Step 3/3: Joystick - follow the prompts, a beep marks each registered position");
+        _stLog("Step 3/3: Joystick - press E-stop (or any working button) to start");
+        _stWaitForAnyPress();
+        _stLog("  push in each prompted direction and hold; beep = registered, then let go");
         if (!_scRunFullCal(1200, nullptr)) result = SELFTEST_FAIL;
     }
 #endif
