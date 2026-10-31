@@ -9,8 +9,10 @@
  *        E-stop -> status (red), Hill-Hold -> yellow, Assist -> green, Power -> battery (red)
  *   3. Joystick: full 'cal full' sequence, saved to NVS
  *
- * Holding E-stop for SELFTEST_SKIP_HOLD_MS skips the rest and counts as done,
- * so a broken button cannot trap the device in self-test on every boot.
+ * A missing or broken part must not trap the device in self-test every boot:
+ *   - during the LED step, holding E-stop SELFTEST_SKIP_HOLD_MS skips everything
+ *   - during the button step, holding any working button that long skips the
+ *     missing buttons and continues with the joystick
  */
 
 #ifndef SELFTEST_H
@@ -32,6 +34,7 @@ enum SelfTestResult : uint8_t {
     SELFTEST_PASS = 0,
     SELFTEST_FAIL,
     SELFTEST_SKIPPED,
+    SELFTEST_PARTIAL,   // passed with missing buttons skipped by the tester
 };
 
 static void _stLog(const char* msg) {
@@ -68,6 +71,16 @@ static bool _stWait(unsigned long ms) {
     return true;
 }
 
+static void _stWaitRelease() {
+    unsigned long until = millis() + 600;
+    while (millis() < until || btnEstop.isHeld() || btnHillHold.isHeld()
+           || btnAssist.isHeld() || btnPower.isHeld()) {
+        buttonsTick();
+        buzzerTick();
+        delay(5);
+    }
+}
+
 static bool _stLedPhase() {
     _stLog("Step 1/3: LEDs - all on, then one by one. Watch that each lights. A beep plays now.");
     buzzerPlay(BUZZ_BUTTON);
@@ -95,6 +108,7 @@ static bool _stLedPhase() {
 // Returns SELFTEST_PASS when every button was pressed
 static SelfTestResult _stButtonPhase() {
     _stLog("Step 2/3: Buttons - press each once (E-stop, Hill-Hold, Assist, Power)");
+    _stLog("  missing button? hold any working one 3s to skip it");
     struct { Button* btn; uint8_t led; const char* name; bool seen; } items[] = {
         { &btnEstop,    LED_STATUS_PIN,    "E-stop",    false },
         { &btnHillHold, LED_HILL_HOLD_PIN, "Hill-Hold", false },
@@ -109,7 +123,20 @@ static SelfTestResult _stButtonPhase() {
     while (seen < count) {
         buttonsTick();
         buzzerTick();
-        if (_stSkipRequested()) return SELFTEST_SKIPPED;
+        for (auto& it : items) {
+            if (it.btn->isHeld() && (millis() - it.btn->pressStartMs) >= SELFTEST_SKIP_HOLD_MS) {
+                for (auto& m : items) {
+                    if (!m.seen) {
+                        Logger::instance().logForced(LogLevel::WARN, TAG_BOOT, __FILE__, __LINE__,
+                            "[SelfTest]   %s skipped", m.name);
+                    }
+                }
+                buzzerPlay(BUZZ_WARNING);
+                _stWaitRelease();
+                _stAllLeds(false);
+                return SELFTEST_PARTIAL;
+            }
+        }
         if (millis() - start >= SELFTEST_BUTTON_TIMEOUT_MS) {
             for (auto& it : items) {
                 if (!it.seen) {
@@ -148,7 +175,7 @@ static SelfTestResult selfTestRun() {
         result = _stButtonPhase();
     }
 #ifndef NO_JOYSTICK
-    if (result == SELFTEST_PASS) {
+    if (result == SELFTEST_PASS || result == SELFTEST_PARTIAL) {
         _stLog("Step 3/3: Joystick - follow the prompts, a beep marks each registered position");
         if (!_scRunFullCal(1200, nullptr)) result = SELFTEST_FAIL;
     }
@@ -160,22 +187,21 @@ static SelfTestResult selfTestRun() {
         _stLog("PASSED - will not run again ('selftest' over serial to repeat)");
         buzzerPlay(BUZZ_CONFIRM);
         break;
+    case SELFTEST_PARTIAL:
+        _stLog("PASSED with skipped buttons - marked done ('selftest' to repeat)");
+        buzzerPlay(BUZZ_READY);
+        break;
     case SELFTEST_SKIPPED:
         _stLog("SKIPPED via E-stop hold - marked done");
         buzzerPlay(BUZZ_POWER_OFF);
         break;
     default:
-        _stLog("FAILED - runs again on next boot (hold E-stop 3s to skip)");
+        _stLog("FAILED - runs again on next boot (hold a working button 3s to skip missing ones)");
         buzzerPlay(BUZZ_ERROR);
         break;
     }
-    // Wait for release so the skip hold does not reach the main loop as an E-stop
-    unsigned long until = millis() + 600;
-    while (millis() < until || btnEstop.isHeld()) {
-        buttonsTick();
-        buzzerTick();
-        delay(5);
-    }
+    // A skip hold must not reach the main loop as an E-stop or power press
+    _stWaitRelease();
     _stClearButtonEvents();
     return result;
 }
