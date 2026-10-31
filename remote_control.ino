@@ -332,6 +332,12 @@ void setup() {
     // Without it, theoretical ADC min/max (0/4095) are used and most joysticks
     // will never reach 1.0 normalized, capping effective speed.
     {
+        uint8_t map = 0;
+        if (nvsLoadJsMap(&map)) {
+            joystickSetMapping(map & 1, map & 2, map & 4);
+            LOG_INFO(TAG_BOOT, "Joystick map loaded from NVS: swap=%d invX=%d invY=%d",
+                map & 1, (map >> 1) & 1, (map >> 2) & 1);
+        }
         int xMin, xMax, yMin, yMax;
         if (nvsLoadJsRange(&xMin, &xMax, &yMin, &yMax)) {
             joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);

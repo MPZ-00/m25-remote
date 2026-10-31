@@ -220,6 +220,25 @@ inline bool nvsLoadJsDeadzone(uint8_t* pct) {
     return false;
 }
 
+// bit0 swap X/Y, bit1 invert X, bit2 invert Y
+inline bool nvsSaveJsMap(uint8_t map) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("js_map", map) == 1;
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadJsMap(uint8_t* map) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    uint8_t val = p.getUChar("js_map", 0xFF);
+    p.end();
+    if (val > 7) return false;
+    *map = val;
+    return true;
+}
+
 // Missing key counts as not done, so a fresh or erased board self-tests on first boot
 inline bool nvsSelfTestPending() {
     Preferences p;

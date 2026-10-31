@@ -38,6 +38,8 @@ struct JoystickNorm { float x = 0.0f; float y = 0.0f; bool inDeadzone = true; };
 inline const char* joystickDirectionLabel(float, float) { return "CENTER"; }
 inline JoystickRaw  joystickReadRaw() { return { JOYSTICK_CENTER, JOYSTICK_CENTER }; }
 inline JoystickNorm joystickRead() { return { 0.0f, 0.0f, true }; }
+inline JoystickNorm joystickNormalize(const JoystickRaw&) { return { 0.0f, 0.0f, true }; }
+inline void joystickSetMapping(bool, bool, bool) {}
 #else // real joystick below
 
  // ---------------------------------------------------------------------------
@@ -69,6 +71,10 @@ static int _jsXMax = JOYSTICK_ADC_MAX;
 static int _jsYMin = JOYSTICK_ADC_MIN;
 static int _jsYMax = JOYSTICK_ADC_MAX;
 static bool _jsRangeCalibrated = false;
+// Wiring map learned by 'cal full'. Centers and ranges are stored in logical axes.
+static bool _jsSwapXY = false;   // forward/back is wired to JOYSTICK_X_PIN
+static bool _jsInvertX = false;  // pushing left raises the ADC value
+static bool _jsInvertY = false;  // pushing forward lowers the ADC value
 static uint8_t _jsDeadzonePct = JOYSTICK_DEADZONE_PCT;
 
 inline bool joystickHasRangeCalibration() { return _jsRangeCalibrated; }
@@ -158,10 +164,37 @@ inline int joystickReadRawAxis(uint8_t pin) {
     return (int)(sum / readSamples);
 }
 
-inline JoystickRaw joystickReadRaw() {
+// Physical pins: x = JOYSTICK_X_PIN, y = JOYSTICK_Y_PIN, before the wiring map
+inline JoystickRaw joystickReadPins() {
     return { joystickReadRawAxis(JOYSTICK_X_PIN),
              joystickReadRawAxis(JOYSTICK_Y_PIN) };
 }
+
+// Logical axes: x = left/right, y = forward/back (swap applied, invert is applied in normalize)
+inline JoystickRaw joystickReadRaw() {
+    JoystickRaw p = joystickReadPins();
+    return _jsSwapXY ? JoystickRaw{ p.y, p.x } : p;
+}
+
+// Logical centers expressed per physical pin, for cal which works on pins
+inline JoystickRaw joystickPinCenter() {
+    return _jsSwapXY ? JoystickRaw{ _jsYCenter, _jsXCenter } : JoystickRaw{ _jsXCenter, _jsYCenter };
+}
+
+inline void joystickSetMapping(bool swapXY, bool invertX, bool invertY) {
+    if (swapXY != _jsSwapXY) {
+        int t = _jsXCenter; _jsXCenter = _jsYCenter; _jsYCenter = t;
+        t = _jsXMin; _jsXMin = _jsYMin; _jsYMin = t;
+        t = _jsXMax; _jsXMax = _jsYMax; _jsYMax = t;
+    }
+    _jsSwapXY = swapXY;
+    _jsInvertX = invertX;
+    _jsInvertY = invertY;
+}
+
+inline bool joystickMappingSwapped() { return _jsSwapXY; }
+inline bool joystickMappingInvertX() { return _jsInvertX; }
+inline bool joystickMappingInvertY() { return _jsInvertY; }
 
 // ---------------------------------------------------------------------------
 // Normalize one axis to [-1.0, +1.0] using measured range endpoints.
@@ -232,7 +265,7 @@ inline const char* joystickDirectionLabel(float x, float y) {
 // Apply a previously computed full-range calibration (e.g. loaded from NVS).
 // Call after joystickInit(); values outside the valid ADC range are ignored.
 // ---------------------------------------------------------------------------
-inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int yMax) {
+inline bool joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int yMax) {
     // Sanity: each range must contain the center with usable travel on both sides.
     bool xOk = (xMin < _jsXCenter - JOYSTICK_MIN_HALF_SPAN) && (xMax > _jsXCenter + JOYSTICK_MIN_HALF_SPAN);
     bool yOk = (yMin < _jsYCenter - JOYSTICK_MIN_HALF_SPAN) && (yMax > _jsYCenter + JOYSTICK_MIN_HALF_SPAN);
@@ -240,13 +273,14 @@ inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int 
         Logger::instance().logForced(LogLevel::WARN, TAG_JOYSTICK, __FILE__, __LINE__,
             "Full-range cal rejected (bad range): X=%d..%d Y=%d..%d centers=(%d,%d)",
             xMin, xMax, yMin, yMax, _jsXCenter, _jsYCenter);
-        return;
+        return false;
     }
     _jsXMin = xMin; _jsXMax = xMax;
     _jsYMin = yMin; _jsYMax = yMax;
     _jsRangeCalibrated = true;
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Full-range cal applied: X=%d..%d Y=%d..%d", xMin, xMax, yMin, yMax);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,12 +289,12 @@ inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int 
 // The caller (serial command handler) orchestrates the directions and prints
 // the instructions; these just do the ADC sampling.
 // ---------------------------------------------------------------------------
-// Both axes, so cal can spot swapped or inverted wiring from the off-axis spread
+// Physical pins, min/max over the window
 inline void joystickSampleExtremes(unsigned long durationMs, JoystickRaw& lo, JoystickRaw& hi) {
-    lo = hi = joystickReadRaw();
+    lo = hi = joystickReadPins();
     unsigned long end = millis() + durationMs;
     while (millis() < end) {
-        JoystickRaw r = joystickReadRaw();
+        JoystickRaw r = joystickReadPins();
         if (r.x < lo.x) lo.x = r.x;
         if (r.x > hi.x) hi.x = r.x;
         if (r.y < lo.y) lo.y = r.y;
@@ -272,14 +306,18 @@ inline void joystickSampleExtremes(unsigned long durationMs, JoystickRaw& lo, Jo
 // ---------------------------------------------------------------------------
 // Main read function - returns normalized joystick state
 // ---------------------------------------------------------------------------
-inline JoystickNorm joystickRead() {
-    JoystickRaw raw = joystickReadRaw();
-
+inline JoystickNorm joystickNormalize(const JoystickRaw& raw) {
     JoystickNorm n;
     n.x = joystickNormalizeAxis(raw.x, _jsXCenter, _jsXMin, _jsXMax);
     n.y = joystickNormalizeAxis(raw.y, _jsYCenter, _jsYMin, _jsYMax);
+    if (_jsInvertX) n.x = -n.x;
+    if (_jsInvertY) n.y = -n.y;
     n.inDeadzone = (n.x == 0.0f && n.y == 0.0f);
     return n;
+}
+
+inline JoystickNorm joystickRead() {
+    return joystickNormalize(joystickReadRaw());
 }
 
 inline int joystickExpectedCenterX() {
@@ -311,6 +349,7 @@ inline bool joystickRecalibrate() {
         delay(4);
     }
     JoystickRaw sampled = { (int)(sumX / calSamples), (int)(sumY / calSamples) };
+    if (_jsSwapXY) sampled = { sampled.y, sampled.x };
     if (!joystickRawNearExpectedCenter(sampled)) {
         _jsXCenter = joystickExpectedCenterX();
         _jsYCenter = joystickExpectedCenterY();

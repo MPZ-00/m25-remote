@@ -486,19 +486,6 @@ static bool _scCalWaitForCenter(unsigned long timeoutMs) {
     return false;
 }
 
-// Self-paced: sampling starts once the stick is deflected, so slow hands don't miss the window
-static bool _scCalWaitForDeflection(bool yAxis, bool wantMax, unsigned long timeoutMs) {
-    const int ctr = yAxis ? _jsYCenter : _jsXCenter;
-    unsigned long start = millis();
-    while (millis() - start < timeoutMs) {
-        JoystickRaw r = joystickReadRaw();
-        int v = yAxis ? r.y : r.x;
-        if ((wantMax ? v - ctr : ctr - v) >= JOYSTICK_MIN_HALF_SPAN) return true;
-        _scCalWait(10);
-    }
-    return false;
-}
-
 // Near the pre-cal center; the range isn't known yet, so half the minimum span is the bar
 static bool _scCalWaitForRelease(unsigned long timeoutMs) {
     const int tol = JOYSTICK_MIN_HALF_SPAN / 2;
@@ -511,61 +498,93 @@ static bool _scCalWaitForRelease(unsigned long timeoutMs) {
     return false;
 }
 
-// Returns the extreme of the requested axis; deviations are measured from the boot center
-static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax, unsigned long holdMs) {
+struct _ScCalStep { int pin; int sign; JoystickRaw lo, hi; };
+
+static uint8_t _scPinGpio(int pin) { return pin ? JOYSTICK_Y_PIN : JOYSTICK_X_PIN; }
+
+// pin -1 = whichever moves most, sign 0 = either way; the first push defines the mapping
+static bool _scCalStepRun(int step, const char* label, int wantPin, int wantSign,
+                          unsigned long holdMs, _ScCalStep& out) {
     _scCmdOutf("[Cal] Step %d/4 --- Push stick %s and hold ---", step, label);
-    if (!_scCalWaitForDeflection(yAxis, wantMax, 15000)) {
-        _scCmdOut("[Cal]   no deflection seen in 15s - sampling anyway");
+    const JoystickRaw c = joystickPinCenter();
+    const unsigned long timeoutMs = 20000;
+    unsigned long start = millis();
+    out.pin = -1;
+    while (out.pin < 0) {
+        if (millis() - start >= timeoutMs) {
+            _scCmdOut("[Cal]   no matching movement in 20s - aborted, previous cal kept");
+            return false;
+        }
+        JoystickRaw r = joystickReadPins();
+        const int d[2] = { r.x - c.x, r.y - c.y };
+        for (int pin = 0; pin < 2; pin++) {
+            if (wantPin >= 0 && pin != wantPin) continue;
+            if (wantPin < 0 && abs(d[pin]) < abs(d[1 - pin])) continue;
+            int sign = (d[pin] > 0) ? 1 : -1;
+            if (abs(d[pin]) >= JOYSTICK_MIN_HALF_SPAN && (wantSign == 0 || sign == wantSign)) {
+                out.pin = pin;
+                out.sign = sign;
+                break;
+            }
+        }
+        _scCalWait(10);
     }
     _scCmdOut("[Cal]   sampling...");
-    JoystickRaw lo, hi;
-    joystickSampleExtremes(holdMs, lo, hi);
+    joystickSampleExtremes(holdMs, out.lo, out.hi);
     buzzerPlay(BUZZ_BUTTON);
-
-    const int ctr = yAxis ? _jsYCenter : _jsXCenter;
-    const int otherCtr = yAxis ? _jsXCenter : _jsYCenter;
-    const int axLo = yAxis ? lo.y : lo.x, axHi = yAxis ? hi.y : hi.x;
-    const int otLo = yAxis ? lo.x : lo.y, otHi = yAxis ? hi.x : hi.y;
-    const int v = wantMax ? axHi : axLo;
-    const int moved = wantMax ? axHi - ctr : ctr - axLo;
-    const int wrongWay = wantMax ? ctr - axLo : axHi - ctr;
-    const int other = max(otHi - otherCtr, otherCtr - otLo);
-
-    _scCmdOutf("[Cal]   %c %s = %d  (moved %d, other axis %d)",
-        yAxis ? 'Y' : 'X', wantMax ? "max" : "min", v, moved, other);
-    if (other > moved && other >= JOYSTICK_MIN_HALF_SPAN) {
-        _scCmdOut("[Cal]   WARNING: the other axis moved more - X/Y wires swapped?");
-    }
-    else if (wrongWay > moved && wrongWay >= JOYSTICK_MIN_HALF_SPAN) {
-        _scCmdOut("[Cal]   WARNING: axis moved the wrong way - inverted?");
-    }
-    else if (moved < JOYSTICK_MIN_HALF_SPAN) {
-        _scCmdOutf("[Cal]   WARNING: barely moved (need %d) - check joystick VCC, GND and signal wire",
-            JOYSTICK_MIN_HALF_SPAN);
-    }
+    const int peak = out.pin ? (out.sign > 0 ? out.hi.y : out.lo.y) : (out.sign > 0 ? out.hi.x : out.lo.x);
+    const int ctr = out.pin ? c.y : c.x;
+    _scCmdOutf("[Cal]   registered GPIO%u %+d (raw %d)", _scPinGpio(out.pin), peak - ctr, peak);
     if (step < 4) {
         _scCmdOut("[Cal]   release to center");
         _scCalWaitForRelease(5000);
     }
-    return v;
+    return true;
 }
 // Shared by 'cal full' and the boot self-test; sup may be null (boot sets the arm lock itself)
 static bool _scRunFullCal(unsigned long holdMs, Supervisor* sup) {
-    int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, holdMs);
-    int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, holdMs);
-    int xMin = _scCalStep(3, "LEFT", false, false, holdMs);
-    int xMax = _scCalStep(4, "RIGHT", false, true, holdMs);
+    _ScCalStep fwd, back, left, right;
+    bool ok = _scCalStepRun(1, "FORWARD (away from you)", -1, 0, holdMs, fwd)
+        && _scCalStepRun(2, "BACKWARD (toward you)", fwd.pin, -fwd.sign, holdMs, back)
+        && _scCalStepRun(3, "LEFT", 1 - fwd.pin, 0, holdMs, left)
+        && _scCalStepRun(4, "RIGHT", 1 - fwd.pin, -left.sign, holdMs, right);
+    if (!ok) {
+        buzzerPlay(BUZZ_WARNING);
+        _scCalWait(600);
+        return false;
+    }
 
     _scCmdOut("[Cal] Return stick to CENTER and let go");
 
-    joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
-    if (!joystickHasRangeCalibration()) {
+    // Ranges per physical pin across both of its steps, then relabelled to logical axes
+    const int yPin = fwd.pin, xPin = 1 - fwd.pin;
+    auto pinLo = [](const _ScCalStep& a, const _ScCalStep& b, int pin) {
+        return pin ? min(a.lo.y, b.lo.y) : min(a.lo.x, b.lo.x);
+    };
+    auto pinHi = [](const _ScCalStep& a, const _ScCalStep& b, int pin) {
+        return pin ? max(a.hi.y, b.hi.y) : max(a.hi.x, b.hi.x);
+    };
+    const int yMin = pinLo(fwd, back, yPin), yMax = pinHi(fwd, back, yPin);
+    const int xMin = pinLo(left, right, xPin), xMax = pinHi(left, right, xPin);
+    const bool swapXY = (yPin == 0);
+    const bool invertY = (fwd.sign < 0);
+    const bool invertX = (left.sign > 0);
+
+    const bool oldSwap = joystickMappingSwapped();
+    const bool oldInvX = joystickMappingInvertX(), oldInvY = joystickMappingInvertY();
+    joystickSetMapping(swapXY, invertX, invertY);
+    if (!joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax)) {
+        joystickSetMapping(oldSwap, oldInvX, oldInvY);
         buzzerPlay(BUZZ_WARNING);
         _scCalWait(600);
         _scCmdOut("[Cal] Range rejected - check wiring and repeat 'cal full'");
         return false;
     }
-    bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax);
+    bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax)
+        && nvsSaveJsMap((swapXY ? 1 : 0) | (invertX ? 2 : 0) | (invertY ? 4 : 0));
+    _scCmdOutf("[Cal] Map: fwd/back = GPIO%u%s, left/right = GPIO%u%s",
+        _scPinGpio(yPin), invertY ? " (inverted)" : "",
+        _scPinGpio(xPin), invertX ? " (inverted)" : "");
     _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
         _jsXMin, _jsXMax, _jsYMin, _jsYMax,
         saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
@@ -598,10 +617,7 @@ static void _scPrintJs() {
     // Previously two separate reads were made (joystickReadRaw() + joystickRead())
     // which could sample different ADC values and produce misleading log output.
     JoystickRaw  raw = joystickReadRaw();
-    JoystickNorm n;
-    n.x = joystickNormalizeAxis(raw.x, _jsXCenter, _jsXMin, _jsXMax);
-    n.y = joystickNormalizeAxis(raw.y, _jsYCenter, _jsYMin, _jsYMax);
-    n.inDeadzone = (n.x == 0.0f && n.y == 0.0f);
+    JoystickNorm n = joystickNormalize(raw);
     const char* dir = joystickDirectionLabel(n.x, n.y);
     _scCmdOutf("[JS] raw X=%-5d Y=%-5d  ctr X=%-5d Y=%-5d  norm X=%+.3f Y=%+.3f  dz=%s  dir=%s",
         raw.x, raw.y, _jsXCenter, _jsYCenter, n.x, n.y, n.inDeadzone ? "yes" : "no", dir);
@@ -610,6 +626,9 @@ static void _scPrintJs() {
         joystickHasRangeCalibration()
             ? "(measured)"
             : "(theoretical - run 'cal full', arming locked)");
+    _scCmdOutf("[JS] map: fwd/back = GPIO%u%s, left/right = GPIO%u%s",
+        joystickMappingSwapped() ? JOYSTICK_X_PIN : JOYSTICK_Y_PIN, joystickMappingInvertY() ? " (inverted)" : "",
+        joystickMappingSwapped() ? JOYSTICK_Y_PIN : JOYSTICK_X_PIN, joystickMappingInvertX() ? " (inverted)" : "");
 }
 
 static void _scPrintWheels() {
@@ -1224,8 +1243,10 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         _scCmdOut("cal full: built with NO_JOYSTICK");
         return;
 #else
-        if (*ctx.state == STATE_OPERATING) {
-            _scCmdOut("cal full: disarm first (cannot calibrate while driving)");
+        // Cal can redefine which way is forward, so never while armed
+        SupervisorState supState = ctx.supervisor ? ctx.supervisor->getState() : SUPERVISOR_DISCONNECTED;
+        if (*ctx.state == STATE_OPERATING || supState == SUPERVISOR_ARMED || supState == SUPERVISOR_DRIVING) {
+            _scCmdOut("cal full: disarm first");
             return;
         }
         unsigned long holdMs = 1200;
