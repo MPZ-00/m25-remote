@@ -806,7 +806,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     }
 
     // log (new logger-native control plane)
-    if (strncmp(cmd, "log", 3) == 0) {
+    if (strncmp(cmd, "log", 3) == 0 && (cmd[3] == ' ' || cmd[3] == '\0')) {
         const char* arg = cmd + 3;
         while (*arg == ' ') arg++;
 
