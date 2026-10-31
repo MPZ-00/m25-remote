@@ -220,6 +220,23 @@ inline bool nvsLoadJsDeadzone(uint8_t* pct) {
     return false;
 }
 
+// Missing key counts as not done, so a fresh or erased board self-tests on first boot
+inline bool nvsSelfTestPending() {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    uint8_t val = p.getUChar("st_done", 0);
+    p.end();
+    return val != 1;
+}
+
+inline bool nvsSaveSelfTestDone(bool done) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("st_done", done ? 1 : 0) == 1;
+    p.end();
+    return ok;
+}
+
 inline bool nvsSaveAutoArm(bool enabled) {
     Preferences p;
     if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;

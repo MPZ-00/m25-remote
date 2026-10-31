@@ -81,6 +81,7 @@ Joystick (ADC) → ControlState → Mapper → CommandFrame → Supervisor → B
 | `serial_commands.h` | UART REPL — `serialInit()` in `setup()`, `serialTick()` in `loop()` |
 | `Logger.h/.cpp` | Singleton tag-based logger; `logForced()` bypasses runtime filtering for safety events |
 | `joystick.h` | ADC1 oversampling, deadzone, `joystickRecalibrate()` |
+| `selftest.h` | Boot-time LED/button/joystick self-test; runs until passed on a fresh board or after serial `selftest` |
 
 ### Supervisor states
 

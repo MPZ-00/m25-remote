@@ -31,6 +31,7 @@
 #include "nvs_config.h"
 #include "serial_commands.h"
 #include "buzzer.h"
+#include "selftest.h"
 #include "Logger.h"
 #include "version.h"
 
@@ -343,6 +344,10 @@ void setup() {
             joystickSetDeadzonePct(dz);
             LOG_INFO(TAG_BOOT, "Joystick deadzone loaded from NVS: %u%%", dz);
         }
+    }
+    if (nvsSelfTestPending()) {
+        SelfTestResult r = selfTestRun();
+        if (r != SELFTEST_FAIL) nvsSaveSelfTestDone(true);
     }
     supervisor.setArmInhibit(!joystickHasRangeCalibration());
     {

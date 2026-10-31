@@ -25,6 +25,7 @@
  *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right, 600ms grace + 1200ms sample each)
  *   deadzone [3-30]             Show/set joystick deadzone in % of travel (NVS)
  *   autoarm [on|off]            Show/set arm on BLE connect (NVS)
+ *   selftest                    Schedule hardware self-test for next boot (NVS)
  *   fwd [speed] [ms]            Drive straight forward at speed% for ms (default 30%% 2000ms, max 5s)
  *   bwd [speed] [ms]            Drive straight backward (same defaults)
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
@@ -261,6 +262,7 @@ static void _scPrintHelp() {
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
     _scCmdOut("  deadzone [3-30]           Show or set joystick deadzone in %% of travel (persisted)");
     _scCmdOut("  autoarm [on|off]          Arm automatically on connect (persisted)");
+    _scCmdOut("  selftest                  Run LED/button/joystick self-test on next boot");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
     _scCmdOut("  bwd [speed] [ms]          Drive backward (default 30%% 2000ms, max 5s)");
@@ -516,6 +518,50 @@ static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax,
             JOYSTICK_MIN_HALF_SPAN);
     }
     return v;
+}
+// Shared by 'cal full' and the boot self-test; sup may be null (boot sets the arm lock itself)
+static bool _scRunFullCal(unsigned long holdMs, Supervisor* sup) {
+    const unsigned long graceMs = 600;
+
+    int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, graceMs, holdMs);
+    int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, graceMs, holdMs);
+    int xMin = _scCalStep(3, "LEFT", false, false, graceMs, holdMs);
+    int xMax = _scCalStep(4, "RIGHT", false, true, graceMs, holdMs);
+
+    _scCmdOut("[Cal] Return stick to CENTER and let go");
+
+    joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
+    if (!joystickHasRangeCalibration()) {
+        buzzerPlay(BUZZ_WARNING);
+        _scCalWait(600);
+        _scCmdOut("[Cal] Range rejected - check wiring and repeat 'cal full'");
+        return false;
+    }
+    bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax);
+    _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
+        _jsXMin, _jsXMax, _jsYMin, _jsYMax,
+        saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+
+    // Boot center may predate the range; only a plausible one unlocks arming
+    if (!_scCalWaitForCenter(5000)) {
+        buzzerPlay(BUZZ_WARNING);
+        _scCalWait(600);
+        _scCmdOut("[Cal] Stick did not return to center - let go and run 'recal'");
+        return false;
+    }
+    buzzerPlay(BUZZ_CONFIRM);
+    _scCalWait(200);
+    if (joystickRecalibrate()) {
+        if (sup && sup->isArmInhibited()) {
+            sup->setArmInhibit(false);
+            _scCmdOut("[Cal] Arming unlocked");
+        }
+    }
+    else {
+        _scCmdOut("[Cal] Center not at rest - let go of the stick and run 'recal'");
+    }
+    _scCmdOut("[Cal] Run 'js' with full deflection to verify norm reaches ~1.0");
+    return true;
 }
 #endif
 
@@ -1159,46 +1205,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             int v = atoi(cmd + 9);
             if (v >= 300 && v <= 5000) holdMs = (unsigned long)v;
         }
-        const unsigned long graceMs = 600;
-
-        int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, graceMs, holdMs);
-        int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, graceMs, holdMs);
-        int xMin = _scCalStep(3, "LEFT", false, false, graceMs, holdMs);
-        int xMax = _scCalStep(4, "RIGHT", false, true, graceMs, holdMs);
-
-        _scCmdOut("[Cal] Return stick to CENTER and let go");
-
-        joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
-        if (!joystickHasRangeCalibration()) {
-            buzzerPlay(BUZZ_WARNING);
-            _scCalWait(600);
-            _scCmdOut("[Cal] Range rejected - check wiring and repeat 'cal full'");
-            return;
-        }
-        bool saved = nvsSaveJsRange(_jsXMin, _jsXMax, _jsYMin, _jsYMax);
-        _scCmdOutf("[Cal] Done: X=%d..%d  Y=%d..%d  %s",
-            _jsXMin, _jsXMax, _jsYMin, _jsYMax,
-            saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
-
-        // Boot center may predate the range; only a plausible one unlocks arming
-        if (!_scCalWaitForCenter(5000)) {
-            buzzerPlay(BUZZ_WARNING);
-            _scCalWait(600);
-            _scCmdOut("[Cal] Stick did not return to center - let go and run 'recal'");
-            return;
-        }
-        buzzerPlay(BUZZ_CONFIRM);
-        _scCalWait(200);
-        if (joystickRecalibrate()) {
-            if (ctx.supervisor && ctx.supervisor->isArmInhibited()) {
-                ctx.supervisor->setArmInhibit(false);
-                _scCmdOut("[Cal] Arming unlocked");
-            }
-        }
-        else {
-            _scCmdOut("[Cal] Center not at rest - let go of the stick and run 'recal'");
-        }
-        _scCmdOut("[Cal] Run 'js' with full deflection to verify norm reaches ~1.0");
+        _scRunFullCal(holdMs, ctx.supervisor);
         return;
 #endif
     }
@@ -1748,6 +1755,14 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         else {
             _scCmdOut("config: use 'config show', 'config reset', or 'config source <env|default>'");
         }
+        return;
+    }
+
+    // selftest - schedule the hardware self-test for next boot
+    if (strcmp(cmd, "selftest") == 0) {
+        bool saved = nvsSaveSelfTestDone(false);
+        _scCmdOut(saved ? "selftest: runs on next boot ('restart' to start it now)"
+                        : "selftest: NVS save failed");
         return;
     }
 
