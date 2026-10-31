@@ -59,6 +59,7 @@
 #include <Arduino.h>
 #include "device_config.h"
 #include "nvs_config.h"
+#include "buzzer.h"
 #include "types.h"
 #include "mapper.h"
 #include "led_control.h"
@@ -455,6 +456,68 @@ static void _scPrintBle() {
         bleAllConnected() ? "YES" : "no",
         bleAnyConnected() ? "yes" : "NO");
 }
+
+#ifndef NO_JOYSTICK
+// Cal blocks loop(), so the buzzer pattern must be advanced here
+static void _scCalWait(unsigned long ms) {
+    unsigned long end = millis() + ms;
+    while (millis() < end) {
+        buzzerTick();
+        delay(5);
+    }
+}
+
+static bool _scCalWaitForCenter(unsigned long timeoutMs) {
+    const unsigned long settleMs = 300;
+    unsigned long start = millis();
+    unsigned long nearSince = 0;
+    while (millis() - start < timeoutMs) {
+        if (joystickRawNearExpectedCenter(joystickReadRaw())) {
+            if (nearSince == 0) nearSince = millis();
+            if (millis() - nearSince >= settleMs) return true;
+        }
+        else {
+            nearSince = 0;
+        }
+        _scCalWait(10);
+    }
+    return false;
+}
+
+// Returns the extreme of the requested axis; deviations are measured from the boot center
+static int _scCalStep(int step, const char* label, bool yAxis, bool wantMax,
+                      unsigned long graceMs, unsigned long holdMs) {
+    _scCmdOutf("[Cal] Step %d/4 --- Push stick %s and hold ---", step, label);
+    _scCalWait(graceMs);
+    _scCmdOut("[Cal]   sampling...");
+    JoystickRaw lo, hi;
+    joystickSampleExtremes(holdMs, lo, hi);
+    buzzerPlay(BUZZ_BUTTON);
+
+    const int ctr = yAxis ? _jsYCenter : _jsXCenter;
+    const int otherCtr = yAxis ? _jsXCenter : _jsYCenter;
+    const int axLo = yAxis ? lo.y : lo.x, axHi = yAxis ? hi.y : hi.x;
+    const int otLo = yAxis ? lo.x : lo.y, otHi = yAxis ? hi.x : hi.y;
+    const int v = wantMax ? axHi : axLo;
+    const int moved = wantMax ? axHi - ctr : ctr - axLo;
+    const int wrongWay = wantMax ? ctr - axLo : axHi - ctr;
+    const int other = max(otHi - otherCtr, otherCtr - otLo);
+
+    _scCmdOutf("[Cal]   %c %s = %d  (moved %d, other axis %d)",
+        yAxis ? 'Y' : 'X', wantMax ? "max" : "min", v, moved, other);
+    if (other > moved && other >= JOYSTICK_MIN_HALF_SPAN) {
+        _scCmdOut("[Cal]   WARNING: the other axis moved more - X/Y wires swapped?");
+    }
+    else if (wrongWay > moved && wrongWay >= JOYSTICK_MIN_HALF_SPAN) {
+        _scCmdOut("[Cal]   WARNING: axis moved the wrong way - inverted?");
+    }
+    else if (moved < JOYSTICK_MIN_HALF_SPAN) {
+        _scCmdOutf("[Cal]   WARNING: barely moved (need %d) - check joystick VCC, GND and signal wire",
+            JOYSTICK_MIN_HALF_SPAN);
+    }
+    return v;
+}
+#endif
 
 static void _scPrintJs() {
     // Use a single ADC read so raw and norm values are consistent.
@@ -1083,6 +1146,10 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     // Step-by-step directional calibration.  Each step: grace pause -> sample.
     // hold_ms = sampling window per direction (default 1200 ms).
     if (strcmp(cmd, "cal full") == 0 || strncmp(cmd, "cal full ", 9) == 0) {
+#ifdef NO_JOYSTICK
+        _scCmdOut("cal full: built with NO_JOYSTICK");
+        return;
+#else
         if (*ctx.state == STATE_OPERATING) {
             _scCmdOut("cal full: disarm first (cannot calibrate while driving)");
             return;
@@ -1094,39 +1161,17 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         }
         const unsigned long graceMs = 600;
 
-        // Each direction: print instruction, grace pause, sample, print raw.
-        // FORWARD = Y-axis max  (stick away from you)
-        _scCmdOut("[Cal] Step 1/4 --- Push stick FORWARD (away from you) and hold ---");
-        delay(graceMs);
-        _scCmdOut("[Cal]   sampling...");
-        int yMax = joystickSampleAxisMax(JOYSTICK_Y_PIN, holdMs);
-        _scCmdOutf("[Cal]   Y max = %d", yMax);
-
-        // BACKWARD = Y-axis min
-        _scCmdOut("[Cal] Step 2/4 --- Push stick BACKWARD (toward you) and hold ---");
-        delay(graceMs);
-        _scCmdOut("[Cal]   sampling...");
-        int yMin = joystickSampleAxisMin(JOYSTICK_Y_PIN, holdMs);
-        _scCmdOutf("[Cal]   Y min = %d", yMin);
-
-        // LEFT = X-axis min
-        _scCmdOut("[Cal] Step 3/4 --- Push stick LEFT and hold ---");
-        delay(graceMs);
-        _scCmdOut("[Cal]   sampling...");
-        int xMin = joystickSampleAxisMin(JOYSTICK_X_PIN, holdMs);
-        _scCmdOutf("[Cal]   X min = %d", xMin);
-
-        // RIGHT = X-axis max
-        _scCmdOut("[Cal] Step 4/4 --- Push stick RIGHT and hold ---");
-        delay(graceMs);
-        _scCmdOut("[Cal]   sampling...");
-        int xMax = joystickSampleAxisMax(JOYSTICK_X_PIN, holdMs);
-        _scCmdOutf("[Cal]   X max = %d", xMax);
+        int yMax = _scCalStep(1, "FORWARD (away from you)", true, true, graceMs, holdMs);
+        int yMin = _scCalStep(2, "BACKWARD (toward you)", true, false, graceMs, holdMs);
+        int xMin = _scCalStep(3, "LEFT", false, false, graceMs, holdMs);
+        int xMax = _scCalStep(4, "RIGHT", false, true, graceMs, holdMs);
 
         _scCmdOut("[Cal] Return stick to CENTER and let go");
 
         joystickApplyFullRangeCalibration(xMin, xMax, yMin, yMax);
         if (!joystickHasRangeCalibration()) {
+            buzzerPlay(BUZZ_WARNING);
+            _scCalWait(600);
             _scCmdOut("[Cal] Range rejected - check wiring and repeat 'cal full'");
             return;
         }
@@ -1136,7 +1181,14 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
 
         // Boot center may predate the range; only a plausible one unlocks arming
-        delay(graceMs * 2);
+        if (!_scCalWaitForCenter(5000)) {
+            buzzerPlay(BUZZ_WARNING);
+            _scCalWait(600);
+            _scCmdOut("[Cal] Stick did not return to center - let go and run 'recal'");
+            return;
+        }
+        buzzerPlay(BUZZ_CONFIRM);
+        _scCalWait(200);
         if (joystickRecalibrate()) {
             if (ctx.supervisor && ctx.supervisor->isArmInhibited()) {
                 ctx.supervisor->setArmInhibit(false);
@@ -1148,6 +1200,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         }
         _scCmdOut("[Cal] Run 'js' with full deflection to verify norm reaches ~1.0");
         return;
+#endif
     }
 
     // arm - transition PAIRED -> ARMED

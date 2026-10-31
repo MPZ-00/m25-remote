@@ -255,26 +255,18 @@ inline void joystickApplyFullRangeCalibration(int xMin, int xMax, int yMin, int 
 // The caller (serial command handler) orchestrates the directions and prints
 // the instructions; these just do the ADC sampling.
 // ---------------------------------------------------------------------------
-inline int joystickSampleAxisMax(uint8_t pin, unsigned long durationMs) {
-    int peak = joystickReadRawAxis(pin);
+// Both axes, so cal can spot swapped or inverted wiring from the off-axis spread
+inline void joystickSampleExtremes(unsigned long durationMs, JoystickRaw& lo, JoystickRaw& hi) {
+    lo = hi = joystickReadRaw();
     unsigned long end = millis() + durationMs;
     while (millis() < end) {
-        int v = joystickReadRawAxis(pin);
-        if (v > peak) peak = v;
+        JoystickRaw r = joystickReadRaw();
+        if (r.x < lo.x) lo.x = r.x;
+        if (r.x > hi.x) hi.x = r.x;
+        if (r.y < lo.y) lo.y = r.y;
+        if (r.y > hi.y) hi.y = r.y;
         delay(10);
     }
-    return peak;
-}
-
-inline int joystickSampleAxisMin(uint8_t pin, unsigned long durationMs) {
-    int peak = joystickReadRawAxis(pin);
-    unsigned long end = millis() + durationMs;
-    while (millis() < end) {
-        int v = joystickReadRawAxis(pin);
-        if (v < peak) peak = v;
-        delay(10);
-    }
-    return peak;
 }
 
 // ---------------------------------------------------------------------------
