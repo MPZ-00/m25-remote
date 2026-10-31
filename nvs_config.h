@@ -220,6 +220,24 @@ inline bool nvsLoadJsDeadzone(uint8_t* pct) {
     return false;
 }
 
+inline bool nvsSaveAutoArm(bool enabled) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    bool ok = p.putUChar("auto_arm", enabled ? 1 : 0) == 1;
+    p.end();
+    return ok;
+}
+
+inline bool nvsLoadAutoArm(bool* enabled) {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return false;
+    uint8_t val = p.getUChar("auto_arm", 0xFF);
+    p.end();
+    if (val > 1) return false;
+    *enabled = (val == 1);
+    return true;
+}
+
 // Fills *pct with persisted value.  Returns true if NVS had a value.
 inline bool nvsLoadMaxSpeed(uint8_t* pct) {
     Preferences p;

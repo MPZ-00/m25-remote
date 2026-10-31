@@ -345,6 +345,13 @@ void setup() {
         }
     }
     supervisor.setArmInhibit(!joystickHasRangeCalibration());
+    {
+        bool autoArm = false;
+        if (nvsLoadAutoArm(&autoArm)) {
+            supervisor.setAutoArm(autoArm);
+            LOG_INFO(TAG_BOOT, "Auto-arm loaded from NVS: %s", autoArm ? "on" : "off");
+        }
+    }
 
     sysState = STATE_BOOT;
     powerOnSafetyCheck();

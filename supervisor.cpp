@@ -22,6 +22,11 @@ Supervisor::Supervisor(Mapper& mapper, const SupervisorConfig& config)
     , _deadzoneStopLatched(false)
     , _driveSessionActive(false)
     , _armInhibit(false)
+#ifdef AUTO_ARM_ON_CONNECT
+    , _autoArm(true)
+#else
+    , _autoArm(false)
+#endif
     , _lastUpdateMs(0)
     , _lastInputTimeMs(0)
     , _lastLinkTimeMs(0)
@@ -565,7 +570,7 @@ void Supervisor::handlePaired() {
 
     pollTelemetry();
 
-    // Without AUTO_ARM_ON_CONNECT: wait for explicit requestArm() call
+    // Without auto-arm: wait for explicit requestArm() call
     // (serial 'arm', assist long-press, or stick arm gesture)
 }
 
@@ -803,18 +808,15 @@ void Supervisor::transitionTo(SupervisorState newState) {
         _lastTelemetryPollMs = millis();    // defer next telemetry poll by one interval
     }
 
-    // On entry to PAIRED: auto-arm once if configured (fires exactly once per
-    // PAIRED entry, not every loop tick as with the old handlePaired() approach).
-    if (newState == SUPERVISOR_PAIRED) {
-#ifdef AUTO_ARM_ON_CONNECT
+    // Only from CONNECTING: ARMED/DRIVING -> PAIRED is a disarm and must stick
+    if (newState == SUPERVISOR_PAIRED && oldState == SUPERVISOR_CONNECTING && _autoArm) {
         if (!_armInhibit) {
-            LOG_INFO(TAG_SUPERVISOR, "AUTO_ARM_ON_CONNECT: arming automatically");
+            LOG_INFO(TAG_SUPERVISOR, "Auto-arm on connect");
             bleResetMotorWriteOk();
             transitionTo(SUPERVISOR_ARMED);
             return;  // transitionTo() will handle ARMED entry setup below
         }
-        LOG_WARN(TAG_SUPERVISOR, "AUTO_ARM_ON_CONNECT skipped: joystick not calibrated");
-#endif
+        LOG_WARN(TAG_SUPERVISOR, "Auto-arm skipped: joystick not calibrated");
     }
 
     // Reset joystick hold timers on any entry to ARMED so stale timer values

@@ -247,9 +247,9 @@ enum SystemState : uint8_t {
 
 // ---------------------------------------------------------------------------
 // Arm mode
-// When AUTO_ARM_ON_CONNECT is defined, the supervisor transitions from PAIRED
-// to ARMED automatically as soon as BLE connection is established.
-// Leave commented out for explicit arming via 'arm' serial command or button.
+// AUTO_ARM_ON_CONNECT sets the default for arming on BLE connect; the serial
+// 'autoarm on|off' command overrides it in NVS. After a disarm (idle timeout,
+// assist hold) re-arm with assist hold or the stick gesture.
 // ---------------------------------------------------------------------------
 // #define AUTO_ARM_ON_CONNECT
 

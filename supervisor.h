@@ -89,9 +89,13 @@ public:
      */
     bool requestArm();
 
-    // Blocks requestArm() and AUTO_ARM_ON_CONNECT; does not disarm
+    // Blocks requestArm() and auto-arm; does not disarm
     void setArmInhibit(bool inhibit) { _armInhibit = inhibit; }
     bool isArmInhibited() const { return _armInhibit; }
+
+    // Arm on BLE connect only; a disarm stays disarmed
+    void setAutoArm(bool enabled) { _autoArm = enabled; }
+    bool isAutoArm() const { return _autoArm; }
     
     /**
      * Request disarm (ARMED or DRIVING -> PAIRED)
@@ -168,6 +172,7 @@ private:
     bool           _deadzoneStopLatched; // true after sending one-shot STOP for current deadzone period
     bool           _driveSessionActive;  // true from ARMED entry until explicit disarm / disconnect
     bool           _armInhibit;
+    bool           _autoArm;
     
     // ---------------------------------------------------------------------------
     // Timing

@@ -115,7 +115,7 @@ Use `config show` over serial to see which source is active for each setting.
 | `NO_DEADMAN_HARDWARE` | Ties deadman permanently HIGH — joystick leaving deadzone is sufficient to drive |
 | `ENABLE_BATTERY_MONITOR` | ADC battery voltage on GPIO36 + auto-shutdown at `BATT_AUTO_OFF_PCT` |
 | `ENABLE_IDLE_WATCHDOG` | Watchdog fires when joystick idles — only for self-centering (spring-loaded) sticks |
-| `AUTO_ARM_ON_CONNECT` | PAIRED → ARMED automatically on BLE connect |
+| `AUTO_ARM_ON_CONNECT` | Default for PAIRED → ARMED on BLE connect; `autoarm on\|off` serial command overrides it in NVS |
 
 ## fake_wheel/
 

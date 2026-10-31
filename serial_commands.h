@@ -24,6 +24,7 @@
  *   recal                       Recalibrate joystick center position
  *   cal full [hold_ms]          Step-by-step directional cal (fwd/bwd/left/right, 600ms grace + 1200ms sample each)
  *   deadzone [3-30]             Show/set joystick deadzone in % of travel (NVS)
+ *   autoarm [on|off]            Show/set arm on BLE connect (NVS)
  *   fwd [speed] [ms]            Drive straight forward at speed% for ms (default 30%% 2000ms, max 5s)
  *   bwd [speed] [ms]            Drive straight backward (same defaults)
  *   arm                         Arm motors (PAIRED -> ARMED, manual mode only)
@@ -258,6 +259,7 @@ static void _scPrintHelp() {
     _scCmdOut("  recal                     Recalibrate joystick center (keep stick centered)");
     _scCmdOut("  cal full [s]              Full-range cal: wiggle stick to all corners (default 5s, persisted)");
     _scCmdOut("  deadzone [3-30]           Show or set joystick deadzone in %% of travel (persisted)");
+    _scCmdOut("  autoarm [on|off]          Arm automatically on connect (persisted)");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
     _scCmdOut("  bwd [speed] [ms]          Drive backward (default 30%% 2000ms, max 5s)");
@@ -1047,6 +1049,33 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         joystickSetDeadzonePct((uint8_t)v);
         bool saved = nvsSaveJsDeadzone((uint8_t)v);
         _scCmdOutf("deadzone: %d%% %s", v, saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
+        return;
+    }
+
+    // autoarm [on|off]
+    if (strcmp(cmd, "autoarm") == 0 || strncmp(cmd, "autoarm ", 8) == 0) {
+        if (!ctx.supervisor) {
+            _scCmdOut("ERROR: supervisor not available");
+            return;
+        }
+        const char* arg = cmd + 7;
+        while (*arg == ' ') arg++;
+        if (*arg == '\0') {
+            _scCmdOutf("autoarm: %s%s", ctx.supervisor->isAutoArm() ? "on" : "off",
+                ctx.supervisor->isArmInhibited() ? " (locked until 'cal full')" : "");
+            return;
+        }
+        bool on;
+        if (strcmp(arg, "on") == 0) on = true;
+        else if (strcmp(arg, "off") == 0) on = false;
+        else {
+            _scCmdOut("autoarm: use 'autoarm on' or 'autoarm off'");
+            return;
+        }
+        ctx.supervisor->setAutoArm(on);
+        bool saved = nvsSaveAutoArm(on);
+        _scCmdOutf("autoarm: %s %s (applies on next connect)", on ? "on" : "off",
+            saved ? "(persisted to NVS)" : "(NVS save failed - runtime only)");
         return;
     }
 
