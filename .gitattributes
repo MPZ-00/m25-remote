@@ -2,8 +2,7 @@
 # This prevents CRLF from sneaking in from Windows editors.
 * text=auto eol=lf
 
-# Windows-only scripts — PowerShell and batch are safest with CRLF on checkout.
-*.ps1  text eol=crlf
+# cmd.exe mis-parses labels and line continuations with LF endings.
 *.bat  text eol=crlf
 *.cmd  text eol=crlf
 
