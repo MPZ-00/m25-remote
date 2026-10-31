@@ -63,6 +63,7 @@
 #include "device_config.h"
 #include "nvs_config.h"
 #include "buzzer.h"
+#include "eventlog.h"
 #include "types.h"
 #include "mapper.h"
 #include "led_control.h"
@@ -268,6 +269,7 @@ static void _scPrintHelp() {
     _scCmdOut("  armhold [300-5000]        Assist hold time in ms to arm/disarm (persisted)");
     _scCmdOut("  idledisarm [10-1800]      Seconds of untouched stick before auto-disarm (persisted)");
     _scCmdOut("  selftest                  Run LED/button/joystick self-test on next boot");
+    _scCmdOut("  logfile [dump|clear]      Flash event log status, print, or erase");
     _scCmdOut("  arm                       Arm motors (PAIRED -> ARMED)");
     _scCmdOut("  fwd [speed] [ms]          Drive forward  (default 30%% 2000ms, max 5s) - compare tx with python");
     _scCmdOut("  bwd [speed] [ms]          Drive backward (default 30%% 2000ms, max 5s)");
@@ -1844,6 +1846,27 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         }
         else {
             _scCmdOut("config: use 'config show', 'config reset', or 'config source <env|default>'");
+        }
+        return;
+    }
+
+    // logfile [dump|clear]
+    if (strcmp(cmd, "logfile") == 0 || strncmp(cmd, "logfile ", 8) == 0) {
+        const char* arg = cmd + 7;
+        while (*arg == ' ') arg++;
+        if (strcmp(arg, "dump") == 0) {
+            eventLogDump();
+        }
+        else if (strcmp(arg, "clear") == 0) {
+            eventLogClear();
+            _scCmdOut("logfile: cleared");
+        }
+        else {
+            size_t cur, old, freeB;
+            uint16_t boot;
+            eventLogStatus(&cur, &old, &freeB, &boot);
+            _scCmdOutf("logfile: boot #%u  current %u B  old %u B  free %u B  ('logfile dump' / 'logfile clear')",
+                boot, (unsigned)cur, (unsigned)old, (unsigned)freeB);
         }
         return;
     }

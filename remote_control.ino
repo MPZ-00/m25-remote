@@ -92,6 +92,7 @@ static void onSupervisorStateChange(SupervisorState oldState, SupervisorState ne
         (newState == SUPERVISOR_DRIVING) ? "DRIVING" :
         (newState == SUPERVISOR_FAILSAFE) ? "FAILSAFE" : "?";
     LOG_DEBUG(TAG_SUPERVISOR, "State change: %s", newName);
+    eventLogf("STATE %s -> %s", supervisorStateToString(oldState), newName);
 
     // Update legacy sysState for serial commands compatibility
     if (newState == SUPERVISOR_DISCONNECTED || newState == SUPERVISOR_CONNECTING) {
@@ -301,6 +302,7 @@ void setup() {
     const uint32_t defaultTagMask = TAG_ALL & ~(TAG_MOTOR | TAG_SUPERVISOR);
     Logger::instance().begin(LogLevel::DEBUG, defaultTagMask);
     Logger::instance().logForced(LogLevel::INFO, TAG_BOOT, __FILE__, __LINE__, "M25 Remote Control " FW_VERSION_STRING " starting...");
+    eventLogInit();
 
     // Check wake-up reason
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -468,6 +470,7 @@ void loop() {
     }
 
     serialTick(_serialCtx);
+    eventLogTick(now, supervisor.isDriving());
 
     buttonsTick();
     JoystickNorm js = joystickRead();

@@ -199,6 +199,8 @@ static SelfTestResult selfTestRun() {
 #endif
 
     _stAllLeds(false);
+    static const char* const resultNames[] = { "PASS", "FAIL", "SKIPPED", "PARTIAL" };
+    eventLogf("SELFTEST %s", resultNames[result]);
     switch (result) {
     case SELFTEST_PASS:
         _stLog("PASSED - will not run again ('selftest' over serial to repeat)");

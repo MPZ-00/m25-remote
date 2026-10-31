@@ -92,9 +92,9 @@ void Logger::setTagEnabled(uint32_t tag, bool enabled, bool persist) {
 }
 
 void Logger::log(LogLevel level, uint32_t tag, const char* file, int line, const char* fmt, ...) {
-    // Level gate
-    if (level > _level) return;
-    if ((_tagMask & tag) == 0) return;
+    const bool toSerial = (level <= _level) && ((_tagMask & tag) != 0);
+    const bool toSink = _sink && level <= _sinkLevel;
+    if (!toSerial && !toSink) return;
 
     // Format user message
     char msgBuf[256];
@@ -102,6 +102,9 @@ void Logger::log(LogLevel level, uint32_t tag, const char* file, int line, const
     va_start(args, fmt);
     vsnprintf(msgBuf, sizeof(msgBuf), fmt, args);
     va_end(args);
+
+    if (toSink) _sink(level, tag, msgBuf);
+    if (!toSerial) return;
 
     // Output: compact by default, optionally include source location.
 #if LOG_FORMAT_DETAILED
@@ -118,6 +121,8 @@ void Logger::logForced(LogLevel level, uint32_t tag, const char* file, int line,
     va_start(args, fmt);
     vsnprintf(msgBuf, sizeof(msgBuf), fmt, args);
     va_end(args);
+
+    if (_sink && level <= _sinkLevel) _sink(level, tag, msgBuf);
 
 #if LOG_FORMAT_DETAILED
     Serial.printf("[%s][%s][%s:%d] %s\n", levelString(level), tagString(tag), filename(file), line, msgBuf);

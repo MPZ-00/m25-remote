@@ -35,6 +35,9 @@ enum LogTag : uint32_t {
     TAG_ALL = (uint32_t)-1
 };
 
+// Secondary output (e.g. flash event log); called from any core, must not block
+typedef void (*LogSink)(LogLevel level, uint32_t tag, const char* msg);
+
 class Logger {
 public:
     static Logger& instance();
@@ -63,6 +66,9 @@ public:
     void logForced(LogLevel level, uint32_t tag, const char* file, int line, const char* fmt, ...)
         __attribute__((format(printf, 6, 7)));
 
+    // Sink receives every message at or above maxLevel, regardless of serial level/tag gating
+    void setSink(LogSink sink, LogLevel maxLevel) { _sink = sink; _sinkLevel = maxLevel; }
+
     static const char* levelString(LogLevel level);
     static const char* tagString(uint32_t tag);
 
@@ -73,6 +79,8 @@ private:
 
     LogLevel _level = LogLevel::DEBUG;
     uint32_t _tagMask = TAG_ALL;
+    LogSink  _sink = nullptr;
+    LogLevel _sinkLevel = LogLevel::WARN;
 };
 
 // Macros
