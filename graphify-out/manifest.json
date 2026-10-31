@@ -210,9 +210,9 @@
     "semantic_hash": "47d72e75365c553976b3440e01fae0a7"
   },
   "joystick.h": {
-    "mtime": 1793477861.247754,
-    "seen": 1793478362.0922925,
-    "ast_hash": "4b1d1d535f89f4dffd1a5de3820fdfc7",
+    "mtime": 1793480206.1288903,
+    "seen": 1793480286.1209526,
+    "ast_hash": "973b8ccc02e3a08388433df757010e10",
     "semantic_hash": ""
   },
   "led_control.h": {
@@ -258,9 +258,9 @@
     "semantic_hash": "2ade551d9ebc887b75d8fdc01f0447c2"
   },
   "nvs_config.h": {
-    "mtime": 1793478285.8561962,
-    "seen": 1793478362.0922985,
-    "ast_hash": "c6f9be310f104ea19d67e9e385fb20a0",
+    "mtime": 1793480206.1288903,
+    "seen": 1793480286.1209602,
+    "ast_hash": "79986e79db4b04ed19f2f39b07df54ee",
     "semantic_hash": ""
   },
   "profiles.h": {
@@ -270,9 +270,9 @@
     "semantic_hash": "1f90502a658d40ff9894f78f848ea1f4"
   },
   "serial_commands.h": {
-    "mtime": 1793479336.2792623,
-    "seen": 1793479361.6872845,
-    "ast_hash": "e980a0e6740f7ff1951be900686f1e74",
+    "mtime": 1793480263.209192,
+    "seen": 1793480286.120963,
+    "ast_hash": "6ecc7ee6b580691c1b7f182a2239d54a",
     "semantic_hash": ""
   },
   "supervisor.cpp": {
