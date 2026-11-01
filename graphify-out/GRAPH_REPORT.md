@@ -1,17 +1,17 @@
-# Graph Report - m25-remote  (2026-10-31)
+# Graph Report - m25-remote  (2026-11-01)
 
 ## Corpus Check
-- 82 files · ~85,925 words
+- 82 files · ~86,486 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 19 file(s) not represented in the graph (top: .ino 9, (none) 4, .ini 2)
 
 ## Summary
-- 1426 nodes · 2257 edges · 93 communities (75 shown, 18 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 288 edges (avg confidence: 0.85)
+- 1434 nodes · 2280 edges · 90 communities (76 shown, 14 thin omitted)
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 293 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8107d095`
+- Built from commit: `61377266`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -25,7 +25,7 @@
 - BLE Diagnostics and Tx Stats
 - command_handler.h
 - Mapper
-- bleAnyConnected
+- _scPrintStatus
 - Supervisor
 - compare_tx_spp.py
 - ResponseHeader
@@ -34,9 +34,9 @@
 - test_base.h
 - m25_wheel_rfcomm/nvs_config.h
 - BLE Command Stats Struct
-- SerialContext
+- eventlog.h
 - joystick.h
-- ArmGesture
+- protocol.h
 - m25_ble.h
 - Serial Profile Commands
 - sendJoystickData
@@ -55,10 +55,10 @@
 - Log Tag Info Struct
 - Legacy System State Bridge
 - Joystick Calibration Persistence
-- _scCalStepRun
+- .pollTelemetry
 - ble-cross-platform.md
 - run
-- _connectWheel
+- m25_ble.cpp
 - WiFi Joystick Config (Archived)
 - Fancy Light Module
 - Env Example File
@@ -67,7 +67,7 @@
 - Local Upload Port Settings
 - mirror-to-6static.yml
 - Vehicle State Concept
-- Constructor
+- BleRecordEntry
 - README Hardware Description
 - _wheelActive
 - Logger
@@ -75,17 +75,17 @@
 - ESP32 One-Handed Remote Control - Design Specification
 - Primary Controls
 - Status LEDs
+- _rfcommSppCb
 - Remote control redesign — no-deadman, 3-button, integrated-LED version
 - .transitionTo
 - Development Roadmap
 - Critical Safety Systems
-- motor_control.h
+- arduino
 - MUST-HAVE Features (Essential for MVP)
 - NICE-TO-HAVE Features (Post-MVP)
 - Client Questions for Feedback Session
 - Universal Design Elements
 - Communication Requirements
-- .sendStop
 - Technical Specifications
 - Design Process & Client Iteration
 - Components
@@ -98,17 +98,14 @@
 - Testing Protocol
 - DriveFeelPreset
 - Troubleshooting
-- ble-cross-platform.md
 - JOYSTICK_SETUP.md guide
 - _notifyCallback
 - _BleRxCB
-- LogTagInfo
-- supervisor.h
 - serial_commands.h
 
 ## God Nodes (most connected - your core abstractions)
-1. `Supervisor` - 90 edges
-2. `_scDispatch()` - 79 edges
+1. `Supervisor` - 94 edges
+2. `_scDispatch()` - 81 edges
 3. `Logger` - 49 edges
 4. `WheelConnState_t` - 33 edges
 5. `Mapper` - 25 edges
@@ -127,8 +124,8 @@
   ROADMAP.md → nvs_config.h
 - `cli_poll()` --calls--> `led_show_battery()`  [INFERRED]
   archive/m25_wheel_rfcomm/cli.h → archive/m25_wheel_rfcomm/led.h
-- `cli_poll()` --calls--> `ble_conn_time()`  [INFERRED]
-  archive/m25_wheel_rfcomm/cli.h → archive/m25_wheel_rfcomm/transport_ble.h
+- `cli_poll()` --calls--> `rfcomm_server_channel()`  [INFERRED]
+  archive/m25_wheel_rfcomm/cli.h → archive/m25_wheel_rfcomm/transport_rfcomm.h
 
 ## Import Cycles
 - None detected.
@@ -142,15 +139,15 @@
 - **Supervisor State Machine** — claude_supervisorstate, claude_systemstate, claude_onsupervisorstatechange [EXTRACTED 1.00]
 - **M25 Remote Control Protocol Command Mapping** — doc_m25_protocol, doc_remote_control_design, doc_esp32_remote_design_spec [INFERRED 0.80]
 
-## Communities (93 total, 18 thin omitted)
+## Communities (90 total, 14 thin omitted)
 
 ### Community 0 - "bleIsConnected"
-Cohesion: 0.12
-Nodes (28): _addDelimiters(), bleIsConnected(), _bleMotorTask(), bleRequestCruiseValues(), bleRequestFirmwareVersion(), bleRequestSOC(), bleSendAssistLevel(), bleSendHillHold() (+20 more)
+Cohesion: 0.15
+Nodes (18): bleAllConnected(), bleIsConnected(), _bleMotorTask(), bleSendAssistLevel(), bleSendHillHold(), bleSendStop(), _clearTxFailureState(), _handleTxFailure() (+10 more)
 
 ### Community 1 - "cli_poll"
-Cohesion: 0.18
-Nodes (13): buzzer_beep(), buzzer_disable(), buzzer_enable(), buzzer_is_enabled(), buzzer_speed_tone(), buzzer_stop(), buzzer_test(), buzzer_tone() (+5 more)
+Cohesion: 0.15
+Nodes (16): buzzer_beep(), buzzer_disable(), buzzer_enable(), buzzer_is_enabled(), buzzer_speed_tone(), buzzer_stop(), buzzer_test(), buzzer_tone() (+8 more)
 
 ### Community 2 - "transport_rfcomm.h"
 Cohesion: 0.13
@@ -161,16 +158,16 @@ Cohesion: 0.05
 Nodes (38): 2.1 Battery monitoring (partial), 2.2 Firmware version ✅, 2.3 Button-based UI (partial), 2.4 Settings persistence ✅, 2.5 Serial REPL ✅, 2.6 NVS: joystick calibration ⏳, 2.7 Boot assist level feedback ⏳, 3.1 Runtime WHEEL_MODE switching (+30 more)
 
 ### Community 4 - "handleSerialCommand"
-Cohesion: 0.08
-Nodes (21): connectToBLE(), connectToWheel(), disconnectBLE(), MyAdvertisedDeviceCallbacks, MyClientCallback, startWheelScan(), encryptPacket(), normalizeJoystickAxis() (+13 more)
+Cohesion: 0.09
+Nodes (20): connectToBLE(), connectToWheel(), disconnectBLE(), MyAdvertisedDeviceCallbacks, MyClientCallback, startWheelScan(), normalizeJoystickAxis(), printJoystickCalibration() (+12 more)
 
 ### Community 5 - "device_config.h"
 Cohesion: 0.04
 Nodes (44): ADC constraint, Architecture, AUTO_ARM_ON_CONNECT flag, BLE threading, bleStartMotorTask(), Build & Flash, Code Generators, CommandFrame (+36 more)
 
 ### Community 6 - "BLE Diagnostics and Tx Stats"
-Cohesion: 0.07
-Nodes (32): bleGetMotorStopLogEnabled(), bleGetMotorStopLogEvery(), bleGetWheelMode(), blePrintTxStats(), bleRecordStart(), bleRecordStop(), bleResetTxStats(), bleSetAutoReconnect() (+24 more)
+Cohesion: 0.09
+Nodes (28): blePrintWheelDetails(), bleWheelModeName(), nvsClearAll(), nvsCredFallbackName(), _nvsEnvFallbackActive(), _nvsFallbackKey(), _nvsFallbackMac(), nvsLoadActiveSource() (+20 more)
 
 ### Community 7 - "command_handler.h"
 Cohesion: 0.08
@@ -180,9 +177,13 @@ Nodes (15): playBeep(), playTone(), testBuzzers(), DebugFlagInfo, description, m
 Cohesion: 0.12
 Nodes (8): Mapper, _config, _hasLastCommand, _lastCommand, _lastTime, _lowBatteryLimit, ROADMAP Phase 1: Core safety (done), Supervisor::Supervisor()
 
+### Community 9 - "_scPrintStatus"
+Cohesion: 0.18
+Nodes (10): bleGetBattery(), bleGetFirmwareVersion(), bleGetMac(), bleRecordEntryCount(), bleRecordIsActive(), _scLevelName(), _scPctToKmh(), _scPrintLoggerSettings() (+2 more)
+
 ### Community 10 - "Supervisor"
 Cohesion: 0.04
-Nodes (39): Supervisor, _activateHoldStartMs, _armedEntryMs, _armInhibit, _autoArm, _callbackCount, _config, _connectAbort (+31 more)
+Nodes (42): StateCallback, Supervisor, _activateHoldStartMs, _armedEntryMs, _armInhibit, _autoArm, _callbackCount, _config (+34 more)
 
 ### Community 11 - "compare_tx_spp.py"
 Cohesion: 0.06
@@ -205,28 +206,28 @@ Cohesion: 0.06
 Nodes (33): tests/, Hardware Setup, Libraries, Pin Connections, Troubleshooting, 1. Prepare Test Build Environment, 2. Open in Arduino IDE, 3. Make Changes (+25 more)
 
 ### Community 16 - "m25_wheel_rfcomm/nvs_config.h"
-Cohesion: 0.21
+Cohesion: 0.23
 Nodes (11): _cli_handle_config(), wheelcfg_clear(), wheelcfg_compiled_default_side(), wheelcfg_fill_runtime(), wheelcfg_is_valid_side(), wheelcfg_load(), wheelcfg_load_side(), wheelcfg_print() (+3 more)
 
 ### Community 17 - "BLE Command Stats Struct"
 Cohesion: 0.13
 Nodes (15): TxStats, assistLevel, driveMode, driveModeWriteFail, other, readCruise, readFw, readSoc (+7 more)
 
-### Community 18 - "SerialContext"
-Cohesion: 0.18
-Nodes (9): SerialContext, armHoldMs, assistLevel, hillHoldOn, mapper, mapperCfg, state, supervisor (+1 more)
+### Community 18 - "eventlog.h"
+Cohesion: 0.23
+Nodes (8): eventLogClear(), eventLogDump(), eventLogf(), eventLogFlush(), eventLogInit(), eventLogStatus(), eventLogTick(), nvsLoadU16()
 
 ### Community 19 - "joystick.h"
-Cohesion: 0.11
-Nodes (30): ADC1, ADC2, joystickApplyFullRangeCalibration(), joystickDirectionLabel(), joystickExpectedCenterX(), joystickExpectedCenterY(), joystickGetDeadzonePct(), joystickHasRangeCalibration() (+22 more)
+Cohesion: 0.08
+Nodes (46): ADC1, ADC2, joystickApplyFullRangeCalibration(), joystickDirectionLabel(), joystickExpectedCenterX(), joystickExpectedCenterY(), joystickGetDeadzonePct(), joystickHasRangeCalibration() (+38 more)
 
-### Community 20 - "ArmGesture"
-Cohesion: 0.15
-Nodes (13): ArmGesture, _phase, _sinceMs, ArmGestureEvent, ARM_GESTURE_DONE, ARM_GESTURE_NONE, ARM_GESTURE_STEP, Phase (+5 more)
+### Community 20 - "protocol.h"
+Cohesion: 0.48
+Nodes (5): proto_crc16(), proto_frame_build(), proto_frame_parse(), proto_stuff(), proto_unstuff()
 
 ### Community 21 - "m25_ble.h"
-Cohesion: 0.10
-Nodes (14): BleRecordEntry, data, direction, ms, rawLen, wheel, _isAck(), _isNack() (+6 more)
+Cohesion: 0.15
+Nodes (8): _isAck(), _isNack(), _parseInt32BE(), _parseResponseData(), _parseUint16BE(), _parseUint32BE(), _parseUint8(), ROADMAP Phase 2: Telemetry & UI (in progress)
 
 ### Community 22 - "Serial Profile Commands"
 Cohesion: 0.06
@@ -253,32 +254,32 @@ Cohesion: 0.07
 Nodes (27): _getWheels(), WheelConnState_t, batteryPct, batteryValid, connected, consecutiveFails, distanceKm, distanceValid (+19 more)
 
 ### Community 28 - "selftest.h"
-Cohesion: 0.07
-Nodes (37): buttonsPrintDebug(), buttonsTick(), tick(), buzzerPlay(), buzzerTick(), ledFlashConfirm(), ledInit(), ledSetAssistLevel() (+29 more)
+Cohesion: 0.12
+Nodes (32): buttonsTick(), buzzerPlay(), buzzerTick(), ledFlashConfirm(), ledInit(), ledSetAssistLevel(), ledSetBattery(), ledSetBleMode() (+24 more)
 
 ### Community 29 - "m25_protocol.h"
 Cohesion: 0.22
 Nodes (6): calculateCRC16(), fake_wheel README, Fake M25 Wheel Simulator, Features, Setup, Troubleshooting
 
 ### Community 30 - "packet.h"
-Cohesion: 0.19
-Nodes (14): crypto_cbc_decrypt(), crypto_cbc_encrypt(), crypto_ecb_decrypt(), crypto_ecb_encrypt(), crypto_generate_iv(), packet_decode(), packet_encode_ack(), packet_encode_response() (+6 more)
+Cohesion: 0.22
+Nodes (10): crypto_cbc_decrypt(), crypto_cbc_encrypt(), crypto_ecb_decrypt(), crypto_ecb_encrypt(), crypto_generate_iv(), packet_decode(), packet_encode_ack(), packet_encode_response() (+2 more)
 
 ### Community 31 - "BLE Record Entry Struct"
 Cohesion: 0.08
 Nodes (24): 1. Callback Pattern (Event-Driven), 2. Queue Pattern (Sequential Processing), 3. Polling Pattern (Not Recommended), Best Practices, BLE Notifications - How It Works, BLE Technical Details, CCCD (Client Characteristic Configuration Descriptor), Common Issues (+16 more)
 
 ### Community 32 - "transport_ble.h"
-Cohesion: 0.09
-Nodes (11): ble_check_events(), ble_conn_time(), ble_first_valid(), ble_on_connect(), ble_on_disconnect(), ble_rx_queue_waiting(), ble_stale_count(), _BleRxPacket (+3 more)
+Cohesion: 0.10
+Nodes (8): ble_check_events(), ble_on_connect(), ble_on_disconnect(), ble_rx_queue_waiting(), _BleRxPacket, data, len, _BleServerCB
 
 ### Community 33 - "BLE Client Disconnect Callbacks"
 Cohesion: 0.11
 Nodes (17): ADC reads only 0 or 4095- **Cause:** Voltage divider not connected properly, Code Files Modified, Code Files Modified, [device_config.h](device_config.h), [device_config.h](device_config.h)Added pin definitions and ADC configuration:, IMPORTANT: Voltage Divider Setup, Joystick values always at extremes- **Cause:** Voltage divider gives wrong ratio (likely missing resistor), Next Steps (+9 more)
 
 ### Community 34 - "RFCOMM Env Loader Script"
-Cohesion: 0.20
-Nodes (10): `async connect(address: str = None, timeout: int = 10) -> bool`, `async connect_async(timeout: int = 10) -> bool`, `async disconnect()`, `async disconnect_async()`, `async receive_packet(timeout: int = 5) -> Optional[bytes]`, `async scan(duration: int = 10, filter_m25: bool = False) -> List[Tuple[str, str]]`, `async send_async(encrypted_data: bytes) -> bool`, `async send_packet(data: bytes) -> bool` (+2 more)
+Cohesion: 0.12
+Nodes (16): `async connect(address: str = None, timeout: int = 10) -> bool`, `async connect_async(timeout: int = 10) -> bool`, `async disconnect()`, `async disconnect_async()`, `async receive_packet(timeout: int = 5) -> Optional[bytes]`, `async scan(duration: int = 10, filter_m25: bool = False) -> List[Tuple[str, str]]`, `async send_async(encrypted_data: bytes) -> bool`, `async send_packet(data: bytes) -> bool` (+8 more)
 
 ### Community 35 - "Motor Command Struct"
 Cohesion: 0.50
@@ -296,21 +297,21 @@ Nodes (3): onSupervisorStateChange callback, SupervisorState, SystemState (legac
 Cohesion: 0.14
 Nodes (13): 1. Configure `config.h`, 2. Set upload port in `platformio.ini`, 3. Build and upload, 4. Set wheel side once, 5. Connect from Python, Debug flags, Enabling BLE alongside RFCOMM, File structure (+5 more)
 
-### Community 40 - "_scCalStepRun"
-Cohesion: 0.17
-Nodes (17): joystickPinCenter(), JoystickRaw, x, y, joystickReadPins(), joystickReadRaw(), joystickReadRawAxis(), joystickSampleExtremes() (+9 more)
+### Community 40 - ".pollTelemetry"
+Cohesion: 0.48
+Nodes (6): bleGetDistanceKm(), bleRequestCruiseValues(), bleRequestFirmwareVersion(), bleRequestSOC(), _requestAll(), _requestOne()
 
 ### Community 41 - "ble-cross-platform.md"
-Cohesion: 0.36
-Nodes (5): data/index.html web joystick UI, wifi_joystick README, m5squared Python Protocol Toolkit, Watchdog / Timeout Safety Mechanism, m25_protocol.py (Python M25 protocol spec, external m5squared toolkit)
+Cohesion: 0.19
+Nodes (11): data/index.html web joystick UI, wifi_joystick README, ESP32 MicroPython BLE Prototype (ubluetooth-based), M25 Encrypted Packet Format (AES-128-CBC + CRC-16 + byte stuffing), m5squared Python Protocol Toolkit, Watchdog / Timeout Safety Mechanism, Characteristic Discovery, Naming Convention (+3 more)
 
 ### Community 42 - "run"
-Cohesion: 0.11
-Nodes (4): _audit(), run(), _audit(), run()
+Cohesion: 0.05
+Nodes (20): ArmGesture, _phase, _sinceMs, ArmGestureEvent, ARM_GESTURE_DONE, ARM_GESTURE_NONE, ARM_GESTURE_STEP, Phase (+12 more)
 
-### Community 43 - "_connectWheel"
-Cohesion: 0.17
-Nodes (9): bleConnect(), _bleErrStr(), bleRecordDump(), bleTick(), _bluedroidStatusStr(), _btControllerStatusStr(), _connectWheel(), _parseMacToBda() (+1 more)
+### Community 43 - "m25_ble.cpp"
+Cohesion: 0.09
+Nodes (22): bleConnect(), _bleErrStr(), bleGetMotorStopLogEnabled(), bleGetMotorStopLogEvery(), bleGetWheelMode(), blePrintTxStats(), bleRecordDump(), bleRecordStart() (+14 more)
 
 ### Community 44 - "WiFi Joystick Config (Archived)"
 Cohesion: 0.18
@@ -324,21 +325,21 @@ Nodes (11): Advanced Features, Design Philosophy, Ergonomic Layout, Future Enhan
 Cohesion: 0.17
 Nodes (11): jobs, mirror, runs-on, steps, name, on, push, workflow_dispatch (+3 more)
 
-### Community 52 - "Constructor"
+### Community 52 - "BleRecordEntry"
 Cohesion: 0.33
-Nodes (6): `async start_notifications(callback = None) -> bool`, `async stop_notifications() -> bool`, `async wait_notification(timeout: float = None) -> Optional[bytes]`, Class Reference, Constructor, `M25BluetoothBLE`
+Nodes (6): BleRecordEntry, data, direction, ms, rawLen, wheel
 
 ### Community 53 - "README Hardware Description"
 Cohesion: 0.17
 Nodes (11): 1. Credentials, 2. Build & Flash, 3. Serial interface, Configuration, Hardware, m25-remote, Quick Start, Related (+3 more)
 
 ### Community 54 - "_wheelActive"
-Cohesion: 0.18
-Nodes (16): bleAllConnected(), bleConnectWheel(), bleDisconnect(), bleFullReset(), bleInit(), blePrintWheelDetails(), bleResetNotifyTimers(), bleResetWheel() (+8 more)
+Cohesion: 0.15
+Nodes (13): bleAnyConnected(), bleConnectWheel(), bleDisconnect(), bleFullReset(), bleResetNotifyTimers(), bleResetWheel(), bleSetKey(), bleSetMac() (+5 more)
 
 ### Community 55 - "Logger"
-Cohesion: 0.08
-Nodes (24): eventLogClear(), eventLogDump(), eventLogf(), eventLogFlush(), eventLogInit(), _eventLogSink(), eventLogStatus(), eventLogTick() (+16 more)
+Cohesion: 0.11
+Nodes (19): _eventLogSink(), joystickInit(), filename(), Logger, _level, _sink, _sinkLevel, _tagMask (+11 more)
 
 ### Community 58 - "ESP32 One-Handed Remote Control - Design Specification"
 Cohesion: 0.22
@@ -352,9 +353,17 @@ Nodes (9): 1. Assist Level Selector, 2. Hill Hold Toggle, 3. Emergency Stop, 4. 
 Cohesion: 0.22
 Nodes (9): 1. Battery Level Indicator, 2. Connection Status, 3. Assist Level Indicators, 4. Hill Hold Status, 5. Cruise Control Status, 6. Small OLED/LCD Screen (128x64 or similar), Essential Indicators, Optional Display (+1 more)
 
+### Community 61 - "_rfcommSppCb"
+Cohesion: 0.50
+Nodes (3): _findWheelByHandle(), _rfcommSppCb(), _sppEvtName()
+
 ### Community 62 - "Remote control redesign — no-deadman, 3-button, integrated-LED version"
 Cohesion: 0.22
 Nodes (8): Buttons, Context, Goals, LEDs, Non-goals (for this version), Open questions, Pinout summary (for enclosure/wiring handoff), Remote control redesign — no-deadman, 3-button, integrated-LED version
+
+### Community 63 - ".transitionTo"
+Cohesion: 0.15
+Nodes (5): State machine changes, bleGetLastNotifyMs(), bleLastMotorWriteOk(), bleResetMotorWriteOk(), bleSendMotorCommand()
 
 ### Community 64 - "Development Roadmap"
 Cohesion: 0.29
@@ -364,9 +373,9 @@ Nodes (7): Development Roadmap, Milestone 1: ESP32 Basic Control (Week 1-2), Mil
 Cohesion: 0.29
 Nodes (7): 1. Deadman Switch (Optional), 2. Timeout Protection, 3. Low Battery Warning, 4. Mode Indication, 5. Connection Loss Handling, Critical Safety Systems, Safety Features
 
-### Community 66 - "motor_control.h"
-Cohesion: 0.70
-Nodes (3): calculateMotorCommand(), joystickToMotorCommand(), printMotorCommand()
+### Community 66 - "arduino"
+Cohesion: 0.11
+Nodes (5): buttonsPrintDebug(), tick(), calculateMotorCommand(), joystickToMotorCommand(), printMotorCommand()
 
 ### Community 67 - "MUST-HAVE Features (Essential for MVP)"
 Cohesion: 0.33
@@ -428,21 +437,13 @@ Nodes (6): DriveFeelPreset, curve, maxSpeedNormal, name, rampRate, turnReduction
 Cohesion: 0.40
 Nodes (5): Connection timeout, Encryption errors, "No TX characteristic found", "Not connected or no TX char", Troubleshooting
 
-### Community 87 - "ble-cross-platform.md"
-Cohesion: 0.28
-Nodes (6): ESP32 MicroPython BLE Prototype (ubluetooth-based), M25 Encrypted Packet Format (AES-128-CBC + CRC-16 + byte stuffing), Characteristic Discovery, Naming Convention, Nordic UART Service (NUS), Service and Characteristics
-
 ### Community 94 - "_notifyCallback"
 Cohesion: 0.20
-Nodes (9): _bleRecordFrame(), _findWheelByHandle(), _m25Crc16(), _m25Decrypt(), _notifyCallback(), _removeDelimiters(), _rfcommConsumeBuffered(), _rfcommSppCb() (+1 more)
-
-### Community 96 - "LogTagInfo"
-Cohesion: 0.50
-Nodes (4): LogTagInfo, description, name, tag
+Nodes (10): _addDelimiters(), _bleRecordFrame(), _buildAndEncrypt(), _m25Crc16(), _m25Decrypt(), _m25Encrypt(), _notifyCallback(), _removeDelimiters() (+2 more)
 
 ### Community 99 - "serial_commands.h"
 Cohesion: 0.10
-Nodes (26): bleGetAutoReconnect(), bleGetBattery(), bleGetDistanceKm(), bleGetFirmwareVersion(), bleGetMac(), bleRecordEntryCount(), bleRecordIsActive(), _scCmdDecorateMsg() (+18 more)
+Nodes (25): bleGetAutoReconnect(), LogTagInfo, description, name, tag, _scCmdDecorateMsg(), _scCmdOut(), _scCmdOutf() (+17 more)
 
 ## Ambiguous Edges - Review These
 - `nvsSaveJsRange()` → `ROADMAP 2.6: persist joystick full-range calibration to NVS (marked pending)`  [AMBIGUOUS]
@@ -451,23 +452,23 @@ Nodes (26): bleGetAutoReconnect(), bleGetBattery(), bleGetDistanceKm(), bleGetFi
   archive/wifi_joystick/README.md · relation: references
 
 ## Knowledge Gaps
-- **206 isolated node(s):** `NONE`, `ERROR`, `WARN`, `INFO`, `DEBUG` (+201 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 723 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **208 isolated node(s):** `NONE`, `ERROR`, `WARN`, `INFO`, `DEBUG` (+203 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 726 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `fake_wheel README` connect `m25_protocol.h` to `ble-cross-platform.md`?**
-  _High betweenness centrality (0.168) - this node is a cross-community bridge._
-- **Are the 58 inferred relationships involving `_scDispatch()` (e.g. with `buttonsPrintDebug()` and `eventLogClear()`) actually correct?**
-  _`_scDispatch()` has 58 INFERRED edges - model-reasoned connections that need verification._
+  _High betweenness centrality (0.163) - this node is a cross-community bridge._
+- **Are the 60 inferred relationships involving `_scDispatch()` (e.g. with `buttonsPrintDebug()` and `eventLogClear()`) actually correct?**
+  _`_scDispatch()` has 60 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `NONE`, `ERROR`, `WARN` to the rest of the system?**
-  _206 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _208 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `bleIsConnected` be split into smaller, more focused modules?**
-  _Cohesion score 0.12222222222222222 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.14619883040935672 - nodes in this community are weakly interconnected._
 - **Why does `wifi_joystick README` connect `ble-cross-platform.md` to `m25_protocol.h`?**
-  _High betweenness centrality (0.160) - this node is a cross-community bridge._
+  _High betweenness centrality (0.161) - this node is a cross-community bridge._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
