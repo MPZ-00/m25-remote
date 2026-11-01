@@ -62,6 +62,7 @@
 #include <Arduino.h>
 #include "device_config.h"
 #include "nvs_config.h"
+#include "pinmap.h"
 #include "buzzer.h"
 #include "eventlog.h"
 #include "types.h"
@@ -220,6 +221,11 @@ static void _scPrintHelp() {
     _scCmdOut("  log show                  Show current log-filter settings");
     _scCmdOut("  js                        One-shot joystick snapshot (includes direction)");
     _scCmdOut("  buttons                   Button hardware and state details");
+    _scCmdOut("  pinmap [show]             Button/LED GPIOs: active vs saved");
+    _scCmdOut("  pinmap btn <estop|hill|assist|power> <gpio> [nc|no]   Assign a button (applies after restart)");
+    _scCmdOut("  pinmap led <status|battery|hill|assist|ble> <gpio>    Assign an LED (applies after restart)");
+    _scCmdOut("  pinmap learn [btn|led]    Guided assignment, answer y/n/s/c (needs 'scan off')");
+    _scCmdOut("  pinmap reset              Back to build-default pins (applies after restart)");
     _scCmdOut("  ble                       Quick BLE connection status");
     _scCmdOut("  wheels                    Verbose per-wheel status + masked key");
     _scCmdOut("  wheels <dual|left|right>  Switch wheel mode (persisted, reconnects)");
@@ -951,6 +957,45 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     // js (one-shot snapshot)
     if (strcmp(cmd, "js") == 0) {
         _scPrintJs();
+        return;
+    }
+
+    if (strcmp(cmd, "pinmap") == 0 || strncmp(cmd, "pinmap ", 7) == 0) {
+        const char* arg = cmd + 6;
+        while (*arg == ' ') arg++;
+        if (*arg == '\0' || strcmp(arg, "show") == 0) {
+            pinmapPrint();
+        }
+        else if (strncmp(arg, "btn ", 4) == 0) {
+            pinmapSet(arg + 4, true);
+        }
+        else if (strncmp(arg, "led ", 4) == 0) {
+            pinmapSet(arg + 4, false);
+        }
+        else if (strcmp(arg, "reset") == 0) {
+            pinmapClear();
+            _scCmdOut("[Pinmap] cleared - build defaults after 'restart'");
+        }
+        else if (strcmp(arg, "learn") == 0 || strncmp(arg, "learn ", 6) == 0) {
+            const char* what = arg + 5;
+            while (*what == ' ') what++;
+            bool doBtn = (*what == '\0' || strcmp(what, "btn") == 0);
+            bool doLed = (*what == '\0' || strcmp(what, "led") == 0);
+            if (!doBtn && !doLed) {
+                _scCmdOut("[Pinmap] use: pinmap learn [btn|led]");
+                return;
+            }
+            // The wizard blocks loop(); no wheel link may exist while it runs.
+            if (!ctx.supervisor || !ctx.supervisor->isConnectHeld()
+                || ctx.supervisor->getState() != SUPERVISOR_DISCONNECTED || bleAnyConnected()) {
+                _scCmdOut("[Pinmap] run 'scan off' first and wait for DISCONNECTED");
+                return;
+            }
+            pinmapLearn(doBtn, doLed);
+        }
+        else {
+            _scCmdOut("[Pinmap] use: pinmap [show|btn|led|learn|reset]");
+        }
         return;
     }
 

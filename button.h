@@ -1,11 +1,10 @@
 /*
  * button.h - Debounced push-button driver
  *
- * All three physical buttons are momentary push buttons wired as:
- *   Button terminal A -> GPIO pin
- *   Button terminal B -> GND
- *   Internal pull-up enabled (INPUT_PULLUP)
- *   Active LOW: GPIO reads LOW when button is pressed
+ * Buttons are momentary switches between a GPIO and GND with INPUT_PULLUP.
+ * Normally-open buttons read LOW when pressed (default). A normally-closed
+ * switch reads HIGH when pressed: set activeHigh (pinmap does this).
+ * Pins can be remapped at runtime from NVS (see pinmap.h) before buttonsInit().
  *
  * The driver exposes "wasPressed()" which returns true exactly once per
  * physical button press (falling-edge detection after debounce window).
@@ -30,6 +29,9 @@ struct Button {
     uint32_t pressStartMs;
     bool     holdConsumed;     // long-press fired or press cancelled: no short-release event
     bool     shortReleaseEvent; // consumed by wasShortReleased()
+    bool     activeHigh;       // pressed level is HIGH (normally-closed switch)
+
+    bool readReleased() const { return (digitalRead(pin) == HIGH) != activeHigh; }
 
     // Call once in setup()
     void init() {
@@ -37,7 +39,7 @@ struct Button {
         delay(10);  // Allow pull-up to settle
 
         // Read actual initial state instead of assuming released
-        bool initialState = (digitalRead(pin) == HIGH);
+        bool initialState = readReleased();
         lastStableState = initialState;
         currentReading = initialState;
         readingChangeTime = 0;
@@ -49,7 +51,7 @@ struct Button {
 
     // Call every loop iteration; updates internal state
     void tick() {
-        bool reading = (digitalRead(pin) == HIGH); // HIGH = released
+        bool reading = readReleased();
         uint32_t now = millis();
 
         if (reading != currentReading) {
@@ -132,19 +134,14 @@ inline void buttonsInit() {
     btnAssist.init();
     btnPower.init();
 
-    // Diagnostic: check if all buttons are stuck LOW (wiring problem)
+    // Diagnostic: all buttons "pressed" at boot is almost always a wiring problem
     delay(50);  // Extra settle time
-    int e = digitalRead(BTN_ESTOP_PIN);
-    int h = digitalRead(BTN_HILL_HOLD_PIN);
-    int a = digitalRead(BTN_ASSIST_PIN);
-    int p = digitalRead(BTN_POWER_PIN);
-
-    if (e == LOW && h == LOW && a == LOW && p == LOW) {
-        LOG_WARN(TAG_BUTTON, "All buttons read LOW at startup");
-        LOG_WARN(TAG_BUTTON, "Check wiring");
-        LOG_WARN(TAG_BUTTON, "- Pins 14,25,26 should connect to button terminals");
-        LOG_WARN(TAG_BUTTON, "- Other button terminals should connect to GND");
-        LOG_WARN(TAG_BUTTON, "- Use normally-open (NO) buttons, not normally-closed (NC)");
+    if (!btnEstop.readReleased() && !btnHillHold.readReleased()
+        && !btnAssist.readReleased() && !btnPower.readReleased()) {
+        LOG_WARN(TAG_BUTTON, "All buttons read pressed at startup - check wiring");
+        LOG_WARN(TAG_BUTTON, "- Pins E-stop=%u Hill=%u Assist=%u Power=%u, other terminal to GND",
+            btnEstop.pin, btnHillHold.pin, btnAssist.pin, btnPower.pin);
+        LOG_WARN(TAG_BUTTON, "- Normally-closed switch? map it with 'pinmap btn <name> <gpio> nc'");
         LOG_WARN(TAG_BUTTON, "- Check for shorts to GND on breadboard");
     }
 }
@@ -158,12 +155,11 @@ inline void buttonsTick() {
 
 // Debug: print raw button pin states (call from serial command)
 inline void buttonsPrintDebug() {
-    int estop = digitalRead(BTN_ESTOP_PIN);
-    int hill = digitalRead(BTN_HILL_HOLD_PIN);
-    int assist = digitalRead(BTN_ASSIST_PIN);
-    int power = digitalRead(BTN_POWER_PIN);
-    LOG_INFO(TAG_BUTTON, "RAW pins: E-Stop=%d HillHold=%d Assist=%d Power=%d (LOW=pressed)",
-        estop, hill, assist, power);
+    LOG_INFO(TAG_BUTTON, "RAW pins: E-Stop(%u)=%d%s HillHold(%u)=%d%s Assist(%u)=%d%s Power(%u)=%d%s",
+        btnEstop.pin, digitalRead(btnEstop.pin), btnEstop.activeHigh ? " NC" : "",
+        btnHillHold.pin, digitalRead(btnHillHold.pin), btnHillHold.activeHigh ? " NC" : "",
+        btnAssist.pin, digitalRead(btnAssist.pin), btnAssist.activeHigh ? " NC" : "",
+        btnPower.pin, digitalRead(btnPower.pin), btnPower.activeHigh ? " NC" : "");
     LOG_INFO(TAG_BUTTON, "Debounced: E-Stop=%s HillHold=%s Assist=%s Power=%s",
         btnEstop.isHeld() ? "HELD" : "released",
         btnHillHold.isHeld() ? "HELD" : "released",

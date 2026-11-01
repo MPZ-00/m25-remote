@@ -47,8 +47,7 @@ static void _stLog(const char* msg) {
 }
 
 static void _stAllLeds(bool on) {
-    const uint8_t pins[] = { LED_STATUS_PIN, LED_BATTERY_PIN, LED_HILL_HOLD_PIN, LED_ASSIST_PIN, LED_BLE_PIN };
-    for (uint8_t pin : pins) _ledSetDuty(pin, on ? LED_DUTY_ON : LED_DUTY_OFF);
+    for (LedState* l : _ledById) _ledSetDuty(l->pin, on ? LED_DUTY_ON : LED_DUTY_OFF);
 }
 
 // Presses during one phase must not count in the next, or reach loop() as actions
@@ -100,14 +99,14 @@ static bool _stWaitForAnyPress(unsigned long timeoutMs) {
             lastBeep = now;
             buzzerPlay(BUZZ_BUTTON);
         }
-        _ledSetDuty(LED_STATUS_PIN, ((now - start) / 500) % 2 ? LED_DUTY_OFF : LED_DUTY_ON);
+        _ledSetDuty(ledPin(LED_ID_STATUS), ((now - start) / 500) % 2 ? LED_DUTY_OFF : LED_DUTY_ON);
         buttonsTick();
         buzzerTick();
         pressed = btnEstop.wasPressed() | btnHillHold.wasPressed()
             | btnAssist.wasPressed() | btnPower.wasPressed();
         delay(5);
     }
-    _ledSetDuty(LED_STATUS_PIN, LED_DUTY_OFF);
+    _ledSetDuty(ledPin(LED_ID_STATUS), LED_DUTY_OFF);
     if (pressed) {
         buzzerPlay(BUZZ_CONFIRM);
         _stWaitRelease();
@@ -121,11 +120,11 @@ static bool _stLedPhase() {
     if (!_stWait(500)) return false;
 
     struct { uint8_t pin; const char* name; } leds[] = {
-        { LED_STATUS_PIN,    "status (red)" },
-        { LED_BATTERY_PIN,   "battery (red)" },
-        { LED_HILL_HOLD_PIN, "hill-hold (yellow)" },
-        { LED_ASSIST_PIN,    "assist (green)" },
-        { LED_BLE_PIN,       "BLE (white)" },
+        { ledPin(LED_ID_STATUS),    "status (red)" },
+        { ledPin(LED_ID_BATTERY),   "battery (red)" },
+        { ledPin(LED_ID_HILL_HOLD), "hill-hold (yellow)" },
+        { ledPin(LED_ID_ASSIST),    "assist (green)" },
+        { ledPin(LED_ID_BLE),       "BLE (white)" },
     };
     for (auto& l : leds) {
         Logger::instance().logForced(LogLevel::INFO, TAG_BOOT, __FILE__, __LINE__, "[SelfTest]   %s", l.name);
@@ -144,10 +143,10 @@ static SelfTestResult _stButtonPhase() {
     _stLog("Step 2/3: Buttons - press each once (E-stop, Hill-Hold, Assist, Power)");
     _stLog("  missing button? hold any working one 3s to skip it");
     struct { Button* btn; uint8_t led; const char* name; bool seen; } items[] = {
-        { &btnEstop,    LED_STATUS_PIN,    "E-stop",    false },
-        { &btnHillHold, LED_HILL_HOLD_PIN, "Hill-Hold", false },
-        { &btnAssist,   LED_ASSIST_PIN,    "Assist",    false },
-        { &btnPower,    LED_BATTERY_PIN,   "Power",     false },
+        { &btnEstop,    ledPin(LED_ID_STATUS),    "E-stop",    false },
+        { &btnHillHold, ledPin(LED_ID_HILL_HOLD), "Hill-Hold", false },
+        { &btnAssist,   ledPin(LED_ID_ASSIST),    "Assist",    false },
+        { &btnPower,    ledPin(LED_ID_BATTERY),   "Power",     false },
     };
     const uint8_t count = sizeof(items) / sizeof(items[0]);
     _stClearButtonEvents();

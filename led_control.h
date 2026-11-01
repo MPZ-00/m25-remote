@@ -73,6 +73,24 @@ static LedState _ledHillHold = { LED_HILL_HOLD_PIN, LED_OFF, 0, false };
 static LedState _ledAssist   = { LED_ASSIST_PIN,    LED_OFF, 0, false };
 static LedState _ledBle      = { LED_BLE_PIN,       LED_OFF, 0, false };
 
+enum LedId : uint8_t {
+    LED_ID_STATUS = 0,
+    LED_ID_BATTERY,
+    LED_ID_HILL_HOLD,
+    LED_ID_ASSIST,
+    LED_ID_BLE,
+    LED_ID_COUNT
+};
+
+static LedState* const _ledById[LED_ID_COUNT] = {
+    &_ledStatus, &_ledBattery, &_ledHillHold, &_ledAssist, &_ledBle
+};
+
+inline uint8_t ledPin(LedId id) { return _ledById[id]->pin; }
+
+// Only before ledInit(); pinmap.h applies NVS overrides here.
+inline void ledSetPin(LedId id, uint8_t pin) { _ledById[id]->pin = pin; }
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -141,18 +159,10 @@ static void _ledSetMode(LedState &led, LedMode newMode) {
 // ---------------------------------------------------------------------------
 inline void ledInit() {
     // Attach pins and configure PWM (ESP32 Arduino core v3.x API)
-    ledcAttach(LED_STATUS_PIN,    LEDC_FREQ_HZ, LEDC_RESOLUTION);
-    ledcAttach(LED_BATTERY_PIN,   LEDC_FREQ_HZ, LEDC_RESOLUTION);
-    ledcAttach(LED_HILL_HOLD_PIN, LEDC_FREQ_HZ, LEDC_RESOLUTION);
-    ledcAttach(LED_ASSIST_PIN,    LEDC_FREQ_HZ, LEDC_RESOLUTION);
-    ledcAttach(LED_BLE_PIN,       LEDC_FREQ_HZ, LEDC_RESOLUTION);
-
-    // Start with everything off
-    _ledSetDuty(LED_STATUS_PIN,    LED_DUTY_OFF);
-    _ledSetDuty(LED_BATTERY_PIN,   LED_DUTY_OFF);
-    _ledSetDuty(LED_HILL_HOLD_PIN, LED_DUTY_OFF);
-    _ledSetDuty(LED_ASSIST_PIN,    LED_DUTY_OFF);
-    _ledSetDuty(LED_BLE_PIN,       LED_DUTY_OFF);
+    for (LedState* l : _ledById) {
+        ledcAttach(l->pin, LEDC_FREQ_HZ, LEDC_RESOLUTION);
+        _ledSetDuty(l->pin, LED_DUTY_OFF);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -236,14 +246,10 @@ inline void ledTick() {
 // Startup self-test: flash all LEDs once in sequence
 // ---------------------------------------------------------------------------
 inline void ledStartupTest() {
-    uint8_t pins[] = {
-        LED_STATUS_PIN, LED_BATTERY_PIN,
-        LED_HILL_HOLD_PIN, LED_ASSIST_PIN, LED_BLE_PIN
-    };
-    for (uint8_t pin : pins) {
-        _ledSetDuty(pin, LED_DUTY_ON);
+    for (LedState* l : _ledById) {
+        _ledSetDuty(l->pin, LED_DUTY_ON);
         delay(120);
-        _ledSetDuty(pin, LED_DUTY_OFF);
+        _ledSetDuty(l->pin, LED_DUTY_OFF);
         delay(60);
     }
 }

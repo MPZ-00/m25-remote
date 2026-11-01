@@ -29,6 +29,7 @@
 #include "motor_control.h"
 #include "m25_ble.h"
 #include "nvs_config.h"
+#include "pinmap.h"
 #include "serial_commands.h"
 #include "buzzer.h"
 #include "selftest.h"
@@ -196,7 +197,7 @@ static void enterOff() {
 
     delay(100);
 
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_POWER_PIN, 0);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)btnPower.pin, btnPower.activeHigh ? 1 : 0);
 
     LOG_INFO(TAG_POWER, "Entering deep sleep...");
     Serial.flush();
@@ -316,7 +317,8 @@ void setup() {
         break;
     }
 
-    // Peripheral init
+    // Peripheral init (pin map first: LEDs and buttons read their GPIOs from it)
+    pinmapApplyBoot();
     ledInit();
     ledStartupTest();
 
