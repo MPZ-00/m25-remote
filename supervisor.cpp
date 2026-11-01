@@ -451,6 +451,12 @@ void Supervisor::handleConnecting() {
         _connectTask = nullptr;   // task has already self-deleted; safe to clear
         _connectDone = false;
 
+        // Run belonged to an earlier CONNECTING session; next spawn starts fresh.
+        if (_connectAbort) {
+            _connectAbort = false;
+            return;
+        }
+
         // Check if any wheel still has retry budget remaining
         bool allDone = true;
         for (int i = 0; i < WHEEL_COUNT; i++) {
@@ -833,13 +839,11 @@ void Supervisor::transitionTo(SupervisorState newState) {
 
     _state = newState;
 
-    // If we're leaving CONNECTING, signal any in-flight connect task to abort
-    // and clear the done flag so stale results aren't processed later.
+    // Abort any in-flight connect task. _connectDone must survive: clearing it
+    // here strands _connectTask non-null and wedges the next CONNECTING.
+    // handleConnecting() discards the result because _connectAbort stays set.
     if (oldState == SUPERVISOR_CONNECTING) {
         _connectAbort = true;
-        _connectDone = false;
-        // _connectTask handle is cleared by the task itself before it deletes.
-        // If it hasn't run yet it will see _connectAbort=true and skip all wheels.
     }
 
     // Reset mapper state on certain transitions
