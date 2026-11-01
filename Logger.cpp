@@ -133,7 +133,8 @@ void Logger::logForced(LogLevel level, uint32_t tag, const char* file, int line,
 
 void Logger::loadFromNVS() {
     Preferences prefs;
-    if (!prefs.begin(NVS_NS, /*readOnly=*/true)) return;
+    // RW creates the namespace on a fresh chip; RO logs a NOT_FOUND error there.
+    if (!prefs.begin(NVS_NS, /*readOnly=*/false)) return;
 
     _level = static_cast<LogLevel>(
         prefs.getUChar(NVS_LEVEL, static_cast<uint8_t>(_level)));
