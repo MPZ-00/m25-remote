@@ -47,6 +47,8 @@ Supervisor::Supervisor(Mapper& mapper, const SupervisorConfig& config)
     , _connectionRequested(false)
     , _lastLeftConnected(false)
     , _lastRightConnected(false)
+    , _connectHold(false)
+    , _holdSweepMs(0)
     , _callbackCount(0)
     , _connectTask(nullptr)
     , _connectDone(false)
@@ -84,6 +86,15 @@ bool Supervisor::update() {
     if (_stopRequested) {
         handleStopRequest();
         return true;
+    }
+
+    // A connect task already blocked in BLE connect cannot be aborted and may
+    // still open a link after the hold took effect.
+    if (_connectHold && _state == SUPERVISOR_DISCONNECTED && bleAnyConnected() &&
+        now - _holdSweepMs >= 1000) {
+        _holdSweepMs = now;
+        LOG_WARN(TAG_SUPERVISOR, "scan off: dropping link from an in-flight connect attempt");
+        bleDisconnect();
     }
 
     // State machine
@@ -142,6 +153,11 @@ void Supervisor::requestConnect(const char* leftAddr, const char* rightAddr,
 
     LOG_DEBUG(TAG_SUPERVISOR, "Stored: L=%s R=%s", _leftAddr, _rightAddr);
 
+    if (_connectHold) {
+        LOG_INFO(TAG_SUPERVISOR, "Connect request held (scan off) - credentials stored");
+        return;
+    }
+
     _connectionRequested = true;
 
     if (_state == SUPERVISOR_DISCONNECTED) {
@@ -180,6 +196,14 @@ void Supervisor::requestReconnect() {
     }
     _reconnectReqCooldownUntilMs = now + kReconnectRequestCooldownMs;
 
+    // Still clears FAILSAFE (E-stop reset, 'reset'), but lands in DISCONNECTED.
+    if (_connectHold) {
+        LOG_INFO(TAG_SUPERVISOR, "Reconnect request held (scan off) - staying disconnected");
+        _connectionRequested = false;
+        if (_state != SUPERVISOR_DISCONNECTED) _stopRequested = true;
+        return;
+    }
+
     if (_state == SUPERVISOR_CONNECTING && _connectionRequested) {
         LOG_DEBUG(TAG_SUPERVISOR, "Reconnect request ignored (already connecting)");
         return;
@@ -192,6 +216,23 @@ void Supervisor::requestReconnect() {
 
     // Connection will be re-initiated after disconnect completes
     _connectionRequested = true;
+}
+
+void Supervisor::setConnectHold(bool hold) {
+    if (hold == _connectHold) return;
+    if (hold) {
+        _connectHold = true;
+        LOG_WARN(TAG_SUPERVISOR, "scan off: connect attempts stopped until 'scan on'");
+        _connectionRequested = false;
+        if (_state != SUPERVISOR_DISCONNECTED) _stopRequested = true;
+        return;
+    }
+    _connectHold = false;
+    LOG_INFO(TAG_SUPERVISOR, "scan on: resuming connect attempts");
+    if (strlen(_leftAddr) == 17 || strlen(_rightAddr) == 17) {
+        _reconnectReqCooldownUntilMs = 0;
+        requestReconnect();
+    }
 }
 
 void Supervisor::requestEmergencyStop(const char* reason) {

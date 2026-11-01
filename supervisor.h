@@ -75,7 +75,15 @@ public:
      * Works from any state except OFF
      */
     void requestReconnect();
-    
+
+    /**
+     * Serial-only test hook ('scan off'): stay DISCONNECTED and refuse every
+     * connect/reconnect request until cleared. Not persisted. Clearing it
+     * reconnects with the last stored credentials.
+     */
+    void setConnectHold(bool hold);
+    bool isConnectHeld() const { return _connectHold; }
+
     /**
      * Request emergency stop (enter FAILSAFE state)
      * 
@@ -210,7 +218,9 @@ private:
     bool    _connectionRequested;
     bool    _lastLeftConnected;   // Track wheel connection state changes
     bool    _lastRightConnected;  // Track wheel connection state changes
-    
+    bool     _connectHold;        // 'scan off': every connect/reconnect request is refused
+    uint32_t _holdSweepMs;        // rate limit for dropping links that slip past the hold
+
     // ---------------------------------------------------------------------------
     // Vehicle State Cache
     // ---------------------------------------------------------------------------

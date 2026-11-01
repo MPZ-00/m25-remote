@@ -231,6 +231,7 @@ static void _scPrintHelp() {
     _scCmdOut("--- Connection ---");
     _scCmdOut("  autoreconnect <on|off>    Enable/disable auto-reconnect");
     _scCmdOut("  disconnect                Force-disconnect all wheels");
+    _scCmdOut("  scan [on|off]             off = stop looking for wheels, ignore all reconnects (not persisted)");
     _scCmdOut("  reconnect                 Force BLE reconnect");
     _scCmdOut("  setmac <left|right> <MAC> Change wheel MAC (disconnects)");
     _scCmdOut("  setkey <left|right> <hex> Change AES key (32 hex chars)");
@@ -307,6 +308,9 @@ static void _scPrintStatus(const SerialContext& ctx) {
             strlcat(stateLine, suffix, sizeof(stateLine));
         }
         _scCmdOut(stateLine);
+        if (ctx.supervisor->isConnectHeld()) {
+            _scCmdOut("[State] scan OFF - not looking for wheels ('scan on' to resume)");
+        }
 
         // Reconnect info
         uint8_t retries = ctx.supervisor->getReconnectAttempts();
@@ -1497,6 +1501,40 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
     }
 
     // disconnect - force-disconnect all wheels
+    // scan [on|off] - serial-only, so state tests aren't confused by button reconnects
+    if (strcmp(cmd, "scan") == 0 || strncmp(cmd, "scan ", 5) == 0) {
+        if (!ctx.supervisor) {
+            _scCmdOut("ERROR: supervisor not available");
+            return;
+        }
+        const char* arg = cmd + 4;
+        while (*arg == ' ') arg++;
+        if (*arg == '\0') {
+            _scCmdOutf("scan: %s", ctx.supervisor->isConnectHeld() ? "OFF (held)" : "ON");
+            return;
+        }
+        if (strcmp(arg, "off") == 0) {
+            if (ctx.supervisor->getState() == SUPERVISOR_DRIVING) {
+                _scCmdOut("scan off: stop motors first ('stop' or release joystick)");
+                return;
+            }
+            ctx.supervisor->setConnectHold(true);
+            _scCmdOut("scan OFF: disconnecting, no reconnects until 'scan on'");
+            return;
+        }
+        if (strcmp(arg, "on") == 0) {
+            if (*ctx.state == STATE_OFF) {
+                _scCmdOut("scan on: device is OFF, use 'power on' first");
+                return;
+            }
+            ctx.supervisor->setConnectHold(false);
+            _scCmdOut("scan ON: reconnecting");
+            return;
+        }
+        _scCmdOut("scan: use 'scan', 'scan on' or 'scan off'");
+        return;
+    }
+
     if (strcmp(cmd, "disconnect") == 0) {
         if (!ctx.supervisor) {
             _scCmdOut("ERROR: supervisor not available");
