@@ -221,10 +221,12 @@ static void _scPrintHelp() {
     _scCmdOut("  log show                  Show current log-filter settings");
     _scCmdOut("  js                        One-shot joystick snapshot (includes direction)");
     _scCmdOut("  buttons                   Button hardware and state details");
-    _scCmdOut("  pinmap [show]             Button/LED GPIOs: active vs saved");
-    _scCmdOut("  pinmap btn <estop|hill|assist|power> <gpio> [nc|no]   Assign a button (applies after restart)");
-    _scCmdOut("  pinmap led <status|battery|hill|assist|ble> <gpio>    Assign an LED (applies after restart)");
-    _scCmdOut("  pinmap buzzer <gpio> [passive|active]                 Assign the buzzer (applies after restart)");
+    _scCmdOut("  pinmap [show]             Button/LED/buzzer GPIOs: active, saved, staged + free pins");
+    _scCmdOut("  pinmap free               Pins still available");
+    _scCmdOut("  pinmap btn <estop|hill|assist|power> <gpio> [nc|no]   Stage a button pin");
+    _scCmdOut("  pinmap led <status|battery|hill|assist|ble> <gpio>    Stage an LED pin");
+    _scCmdOut("  pinmap buzzer <gpio> [passive|active]                 Stage the buzzer pin");
+    _scCmdOut("  pinmap save | discard     Save staged pins (refused while any pin is used twice) / drop them");
     _scCmdOut("  pinmap learn [btn|led|buzzer]  Guided assignment, answer y/n/s/c (needs 'scan off')");
     _scCmdOut("  pinmap reset              Back to build-default pins (applies after restart)");
     _scCmdOut("  ble                       Quick BLE connection status");
@@ -981,9 +983,17 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         else if (strncmp(arg, "buzzer ", 7) == 0) {
             pinmapSetBuzzer(arg + 7);
         }
+        else if (strcmp(arg, "free") == 0) {
+            pinmapPrintFree();
+        }
+        else if (strcmp(arg, "save") == 0) {
+            pinmapSaveStaged();
+        }
+        else if (strcmp(arg, "discard") == 0) {
+            pinmapDiscard();
+        }
         else if (strcmp(arg, "reset") == 0) {
-            pinmapClear();
-            _scCmdOut("[Pinmap] cleared - build defaults after 'restart'");
+            pinmapReset();
         }
         else if (strcmp(arg, "learn") == 0 || strncmp(arg, "learn ", 6) == 0) {
             const char* what = arg + 5;
@@ -1004,7 +1014,7 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             pinmapLearn(doBtn, doLed, doBuzz);
         }
         else {
-            _scCmdOut("[Pinmap] use: pinmap [show|btn|led|buzzer|learn|reset]");
+            _scCmdOut("[Pinmap] use: pinmap [show|free|btn|led|buzzer|save|discard|learn|reset]");
         }
         return;
     }

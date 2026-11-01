@@ -7,12 +7,17 @@
  * pinmapApplyBoot() runs before ledInit()/buttonsInit().
  *
  * Serial commands (wired in serial_commands.h):
- *   pinmap [show]                      Active vs saved assignment
- *   pinmap btn <name> <gpio> [nc|no]   estop|hill|assist|power
- *   pinmap led <name> <gpio>           status|battery|hill|assist|ble
- *   pinmap buzzer <gpio> [passive|active]
+ *   pinmap [show]                      Active, saved and staged assignment
+ *   pinmap free                        Pins still available per function type
+ *   pinmap btn <name> <gpio> [nc|no]   estop|hill|assist|power   (staged)
+ *   pinmap led <name> <gpio>           status|battery|hill|assist|ble (staged)
+ *   pinmap buzzer <gpio> [passive|active]                     (staged)
+ *   pinmap save | discard              Write staged edits / drop them
  *   pinmap learn [btn|led|buzzer]      Guided wizard (requires 'scan off')
  *   pinmap reset                       Back to device_config.h defaults
+ *
+ * Staged edits may assign a pin twice (needed to swap two pins); 'save'
+ * refuses until every duplicate is resolved.
  *
  * Values encode the pin in bits 0-5; bit 7 means "normally closed" for
  * buttons and "active (on/off) type" for the buzzer.
@@ -591,20 +596,98 @@ static bool _pmLearnBuzzer(PinMap& m) {
 }
 
 // ---------------------------------------------------------------------------
-// Public entry points
+// Staging (direct commands)
 // ---------------------------------------------------------------------------
+static PinMap _pmStaged;
+static bool   _pmStagedLoaded = false;
+static bool   _pmStagedDirty  = false;
+
+static PinMap& _pmStage() {
+    if (!_pmStagedLoaded) {
+        pinmapLoad(_pmStaged);
+        _pmStagedLoaded = true;
+        _pmStagedDirty = false;
+    }
+    return _pmStaged;
+}
+
+static bool _pmIsDup(const PinMap& m, uint8_t fn) {
+    for (uint8_t j = 0; j < PF_COUNT; j++) {
+        if (j != fn && _pmPin(m.v[j]) == _pmPin(m.v[fn])) return true;
+    }
+    return false;
+}
+
+// Counts pins claimed more than once; prints each with its users if asked.
+static uint8_t _pmDuplicates(const PinMap& m, bool print) {
+    uint8_t dups = 0;
+    for (uint8_t i = 0; i < PF_COUNT; i++) {
+        uint8_t pin = _pmPin(m.v[i]);
+        bool firstUser = true;
+        for (uint8_t j = 0; j < i; j++) if (_pmPin(m.v[j]) == pin) firstUser = false;
+        if (!firstUser || !_pmIsDup(m, i)) continue;
+        dups++;
+        if (!print) continue;
+        char users[120] = {0};
+        for (uint8_t j = i; j < PF_COUNT; j++) {
+            if (_pmPin(m.v[j]) != pin) continue;
+            if (users[0]) strlcat(users, ", ", sizeof(users));
+            strlcat(users, _pmFns[j].label, sizeof(users));
+        }
+        _pmOut("  GPIO %u: %s", pin, users);
+    }
+    return dups;
+}
+
+static bool _pmPinUsed(const PinMap& m, uint8_t pin) {
+    for (uint8_t i = 0; i < PF_COUNT; i++) if (_pmPin(m.v[i]) == pin) return true;
+    return false;
+}
+
+inline void pinmapPrintFree() {
+    const PinMap& m = _pmStage();
+    char btn[96] = {0}, out[96] = {0};
+    for (uint8_t pin : _pmUsablePins) {
+        if (_pmPinUsed(m, pin)) continue;
+        char tok[8];
+        if (!_pmPinRejectReason(PF_BTN_ESTOP, pin)) {
+            snprintf(tok, sizeof(tok), " %u%s", pin, _pmRtcPin(pin) ? "*" : "");
+            strlcat(btn, tok, sizeof(btn));
+        }
+        if (!_pmPinRejectReason(PF_LED_STATUS, pin)) {
+            snprintf(tok, sizeof(tok), " %u", pin);
+            strlcat(out, tok, sizeof(out));
+        }
+    }
+    _pmOut("free for buttons    :%s", btn[0] ? btn : " none");
+    _pmOut("  * = also valid for power (wake from sleep); 34-39 need an external pull-up");
+    _pmOut("free for LEDs/buzzer:%s", out[0] ? out : " none");
+}
+
 inline void pinmapPrint() {
     PinMap saved;
     uint16_t fromNvs = pinmapLoad(saved);
-    _pmOut("%-24s active       saved", "function");
+    const PinMap& st = _pmStage();
+    _pmOut("%-24s active       saved%s", "function", _pmStagedDirty ? "        staged" : "");
     for (uint8_t i = 0; i < PF_COUNT; i++) {
-        bool pending = saved.v[i] != _pmActive.v[i];
-        _pmOut("%-24s %3u%-8s  %3u%-8s %s%s", _pmFns[i].label,
+        char staged[24] = {0};
+        if (_pmStagedDirty) {
+            snprintf(staged, sizeof(staged), "%3u%-8s%s", _pmPin(st.v[i]), _pmFlagText(i, st.v[i]),
+                _pmIsDup(st, i) ? " DUP" : "");
+        }
+        _pmOut("%-24s %3u%-8s  %3u%-8s  %-16s %s%s", _pmFns[i].label,
             _pmPin(_pmActive.v[i]), _pmFlagText(i, _pmActive.v[i]),
             _pmPin(saved.v[i]), _pmFlagText(i, saved.v[i]),
+            staged,
             (fromNvs & (1u << i)) ? "[NVS]" : "[default]",
-            pending ? "  restart pending" : "");
+            saved.v[i] != _pmActive.v[i] ? "  restart pending" : "");
     }
+    if (_pmStagedDirty) {
+        uint8_t dups = _pmDuplicates(st, false);
+        if (dups) _pmOut("staged edits: %u pin(s) assigned twice - fix before 'pinmap save'", dups);
+        else      _pmOut("staged edits not saved - 'pinmap save' or 'pinmap discard'");
+    }
+    pinmapPrintFree();
 }
 
 static void _pmRestoreHardware() {
@@ -619,6 +702,12 @@ static void _pmRestoreHardware() {
 }
 
 static bool _pmCommit(const PinMap& m) {
+    if (_pmDuplicates(m, false)) {
+        _pmOut("not saved - pins assigned twice:");
+        _pmDuplicates(m, true);
+        _pmOut("reassign one of each pair ('pinmap free' lists open pins)");
+        return false;
+    }
     char err[120];
     if (!_pmValidate(m, err, sizeof(err))) {
         _pmOut("rejected: %s", err);
@@ -634,8 +723,7 @@ static bool _pmCommit(const PinMap& m) {
 
 // Blocking. Caller guarantees no wheel link (supervisor held in DISCONNECTED).
 inline void pinmapLearn(bool doButtons, bool doLeds, bool doBuzzer) {
-    PinMap m;
-    pinmapLoad(m);
+    PinMap m = _pmStage();
     while (Serial.available() > 0) (void)Serial.read();
     _pmLineLen = 0;
 
@@ -660,6 +748,8 @@ inline void pinmapLearn(bool doButtons, bool doLeds, bool doBuzzer) {
         _pmRestoreHardware();
         return;
     }
+    _pmStaged = m;
+    _pmStagedDirty = false;
     _pmOut("Saved. Restart now to apply? y/n");
     if (_pmAsk(false) == PM_YES) {
         _pmOut("Restarting...");
@@ -678,6 +768,24 @@ static int _pmFindFn(const char* name, bool button) {
         if (strcmp(name, _pmFns[i].key) == 0) return i;
     }
     return -1;
+}
+
+static void _pmStageSet(uint8_t fn, uint8_t v) {
+    const char* why = _pmPinRejectReason(fn, _pmPin(v));
+    if (why) {
+        _pmOut("GPIO %u can't be the %s: %s", _pmPin(v), _pmFns[fn].label, why);
+        return;
+    }
+    PinMap& m = _pmStage();
+    m.v[fn] = v;
+    _pmStagedDirty = true;
+    _pmOut("staged: %s -> GPIO %u%s", _pmFns[fn].label, _pmPin(v), _pmFlagText(fn, v));
+    for (uint8_t j = 0; j < PF_COUNT; j++) {
+        if (j != fn && _pmPin(m.v[j]) == _pmPin(v)) {
+            _pmOut("  GPIO %u is also the %s - reassign it before 'pinmap save'", _pmPin(v), _pmFns[j].label);
+        }
+    }
+    if (!_pmDuplicates(m, false)) _pmOut("  no conflicts - 'pinmap save' to keep");
 }
 
 // "btn <name> <gpio> [nc|no]" or "led <name> <gpio>"
@@ -700,11 +808,7 @@ inline void pinmapSet(const char* args, bool button) {
         }
         nc = strcmp(mode, "nc") == 0;
     }
-    PinMap m;
-    pinmapLoad(m);
-    m.v[fn] = (uint8_t)pin | (nc ? PM_NC_BIT : 0);
-    if (!_pmCommit(m)) return;
-    _pmOut("%s -> GPIO %d%s saved, 'restart' to apply", _pmFns[fn].label, pin, nc ? " (nc)" : "");
+    _pmStageSet((uint8_t)fn, (uint8_t)pin | (nc ? PM_NC_BIT : 0));
     if (button && pin >= 34) _pmOut("note: GPIO %d has no internal pull-up, add an external resistor", pin);
 }
 
@@ -720,13 +824,32 @@ inline void pinmapSetBuzzer(const char* args) {
         _pmOut("use: pinmap buzzer <gpio> [passive|active]");
         return;
     }
-    PinMap m;
-    pinmapLoad(m);
-    if (n == 1) active = _pmNc(m.v[PF_BUZZER]);
-    m.v[PF_BUZZER] = (uint8_t)pin | (active ? PM_NC_BIT : 0);
-    if (!_pmCommit(m)) return;
-    _pmOut("buzzer -> GPIO %d (%s) saved, 'restart' to apply", pin, active ? "active" : "passive");
+    if (n == 1) active = _pmNc(_pmStage().v[PF_BUZZER]);
+    _pmStageSet(PF_BUZZER, (uint8_t)pin | (active ? PM_NC_BIT : 0));
     if (active) _pmOut("warning: an active buzzer needs a transistor, the GPIO alone gets overloaded");
+}
+
+inline void pinmapSaveStaged() {
+    if (!_pmStagedDirty) {
+        _pmOut("nothing staged");
+        return;
+    }
+    if (!_pmCommit(_pmStage())) return;
+    _pmStagedDirty = false;
+    _pmOut("saved, 'restart' to apply");
+}
+
+inline void pinmapDiscard() {
+    _pmStagedLoaded = false;
+    _pmStage();
+    _pmOut("staged edits dropped");
+}
+
+inline void pinmapReset() {
+    pinmapClear();
+    _pmStagedLoaded = false;
+    _pmStage();
+    _pmOut("cleared - build defaults after 'restart'");
 }
 
 #endif // PINMAP_H
