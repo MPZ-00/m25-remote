@@ -1,7 +1,7 @@
 /*
- * pinmap.h - Runtime GPIO assignment for buttons and LEDs.
+ * pinmap.h - Runtime GPIO assignment for buttons, LEDs and the buzzer.
  *
- * Lets testers rewire the remote to whatever buttons/LEDs they have without
+ * Lets testers rewire the remote to whatever parts they have without
  * rebuilding. Assignments live in their own NVS namespace ("m25pins"), so
  * 'config reset' does not wipe them. They apply at the next boot only:
  * pinmapApplyBoot() runs before ledInit()/buttonsInit().
@@ -10,10 +10,12 @@
  *   pinmap [show]                      Active vs saved assignment
  *   pinmap btn <name> <gpio> [nc|no]   estop|hill|assist|power
  *   pinmap led <name> <gpio>           status|battery|hill|assist|ble
- *   pinmap learn [btn|led]             Guided wizard (requires 'scan off')
+ *   pinmap buzzer <gpio> [passive|active]
+ *   pinmap learn [btn|led|buzzer]      Guided wizard (requires 'scan off')
  *   pinmap reset                       Back to device_config.h defaults
  *
- * Button values encode the pin in bits 0-5 and "normally closed" in bit 7.
+ * Values encode the pin in bits 0-5; bit 7 means "normally closed" for
+ * buttons and "active (on/off) type" for the buzzer.
  */
 
 #ifndef PINMAP_H
@@ -33,6 +35,12 @@
 #define PM_NC_BIT        0x80
 #define PM_PIN_MASK      0x3F
 
+#ifdef BUZZER_ACTIVE
+#define PM_BUZZER_DFLT   (BUZZER_PIN | PM_NC_BIT)
+#else
+#define PM_BUZZER_DFLT   BUZZER_PIN
+#endif
+
 enum PinFn : uint8_t {
     PF_BTN_ESTOP = 0,
     PF_BTN_HILL,
@@ -43,6 +51,7 @@ enum PinFn : uint8_t {
     PF_LED_HILL,
     PF_LED_ASSIST,
     PF_LED_BLE,
+    PF_BUZZER,
     PF_COUNT
 };
 #define PF_BTN_COUNT 4
@@ -64,6 +73,7 @@ static const PinFnInfo _pmFns[PF_COUNT] = {
     { "hill",    "hill-hold LED (yellow)", "lhill",  LED_HILL_HOLD_PIN },
     { "assist",  "assist LED (green)",     "lasst",  LED_ASSIST_PIN },
     { "ble",     "BLE LED (white)",        "lble",   LED_BLE_PIN },
+    { "buzzer",  "buzzer",                 "buzz",   PM_BUZZER_DFLT },
 };
 
 struct PinMap {
@@ -77,6 +87,12 @@ static Button* const _pmButtons[PF_BTN_COUNT] = { &btnEstop, &btnHillHold, &btnA
 inline bool    _pmIsButton(uint8_t fn) { return fn < PF_BTN_COUNT; }
 inline uint8_t _pmPin(uint8_t v)       { return v & PM_PIN_MASK; }
 inline bool    _pmNc(uint8_t v)        { return (v & PM_NC_BIT) != 0; }
+
+inline const char* _pmFlagText(uint8_t fn, uint8_t v) {
+    if (fn == PF_BUZZER) return _pmNc(v) ? " active" : " passive";
+    if (_pmIsButton(fn) && _pmNc(v)) return " nc";
+    return "";
+}
 
 static void _pmOut(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 static void _pmOut(const char* fmt, ...) {
@@ -109,7 +125,6 @@ inline const char* _pmPinRejectReason(uint8_t fn, uint8_t pin) {
 #ifndef NO_JOYSTICK
     if (pin == JOYSTICK_X_PIN || pin == JOYSTICK_Y_PIN) return "used by the joystick";
 #endif
-    if (pin == BUZZER_PIN) return "used by the buzzer";
 #ifdef ENABLE_BATTERY_MONITOR
     if (pin == BATTERY_ADC_PIN) return "used by the battery monitor";
 #endif
@@ -204,12 +219,14 @@ inline void pinmapApplyBoot() {
     for (uint8_t i = 0; i < LED_ID_COUNT; i++) {
         ledSetPin((LedId)i, _pmPin(m.v[PF_BTN_COUNT + i]));
     }
+    buzzerConfigure(_pmPin(m.v[PF_BUZZER]), !_pmNc(m.v[PF_BUZZER]));
     if (fromNvs) {
         Logger::instance().logForced(LogLevel::INFO, TAG_BOOT, __FILE__, __LINE__,
-            "Pin map from NVS: E-stop=%u%s Hill=%u%s Assist=%u%s Power=%u%s | LEDs %u/%u/%u/%u/%u",
-            _pmPin(m.v[0]), _pmNc(m.v[0]) ? "nc" : "", _pmPin(m.v[1]), _pmNc(m.v[1]) ? "nc" : "",
-            _pmPin(m.v[2]), _pmNc(m.v[2]) ? "nc" : "", _pmPin(m.v[3]), _pmNc(m.v[3]) ? "nc" : "",
-            _pmPin(m.v[4]), _pmPin(m.v[5]), _pmPin(m.v[6]), _pmPin(m.v[7]), _pmPin(m.v[8]));
+            "Pin map from NVS: E-stop=%u%s Hill=%u%s Assist=%u%s Power=%u%s | LEDs %u/%u/%u/%u/%u | buzzer %u%s",
+            _pmPin(m.v[0]), _pmFlagText(0, m.v[0]), _pmPin(m.v[1]), _pmFlagText(1, m.v[1]),
+            _pmPin(m.v[2]), _pmFlagText(2, m.v[2]), _pmPin(m.v[3]), _pmFlagText(3, m.v[3]),
+            _pmPin(m.v[4]), _pmPin(m.v[5]), _pmPin(m.v[6]), _pmPin(m.v[7]), _pmPin(m.v[8]),
+            _pmPin(m.v[PF_BUZZER]), _pmFlagText(PF_BUZZER, m.v[PF_BUZZER]));
     }
 }
 
@@ -276,12 +293,14 @@ struct PmScan {
 };
 
 // 34-39 have no internal pull-up and float, so they would "press" on their own.
-static void _pmScanPrepare(PmScan& sc) {
+// The buzzer pins stay out: buzzerTick() keeps driving the active one.
+static void _pmScanPrepare(PmScan& sc, const PinMap& m) {
     sc.n = 0;
     uint8_t candidates[sizeof(_pmUsablePins)];
     uint8_t nc = 0;
     for (uint8_t pin : _pmUsablePins) {
         if (pin >= 34 || _pmPinRejectReason(PF_BTN_ESTOP, pin)) continue;
+        if (pin == _pmPin(m.v[PF_BUZZER]) || pin == _pmPin(_pmActive.v[PF_BUZZER])) continue;
         pinMode(pin, INPUT_PULLUP);
         candidates[nc++] = pin;
     }
@@ -352,7 +371,7 @@ static PmAnswer _pmDetectPress(PmScan& sc, bool allowSkip, uint8_t* pin, uint8_t
 // Returns false if cancelled.
 static bool _pmLearnButtons(PinMap& m) {
     PmScan sc;
-    _pmScanPrepare(sc);
+    _pmScanPrepare(sc, m);
     _pmOut("Buttons: press each one when asked. Answers: y = keep, n = retry, s = skip (keep saved), c = cancel");
     bool taken[64] = {false};
 
@@ -399,29 +418,45 @@ static bool _pmLearnButtons(PinMap& m) {
 }
 
 // ---------------------------------------------------------------------------
-// LED wizard
+// Output wizards (LEDs, buzzer)
 // ---------------------------------------------------------------------------
-// Returns PM_YES / PM_NO (next) / PM_SKIP / PM_CANCEL for one blinking pin.
-static PmAnswer _pmAskLed(uint8_t pin, Button* btns) {
-    pinMode(pin, OUTPUT);
+enum PmDrive : uint8_t { PM_DRIVE_BLINK, PM_DRIVE_TONE, PM_DRIVE_DC };
+
+static void _pmDriveOut(uint8_t pin, PmDrive drive, bool on) {
+    if (drive == PM_DRIVE_TONE) ledcWrite(pin, on ? BUZZER_TONE_DUTY : 0);
+    else                        digitalWrite(pin, on ? HIGH : LOW);
+}
+
+// Drives one candidate pin until answered. E-stop press = yes, hold 2s =
+// cancel, other buttons = no. Returns PM_YES / PM_NO / PM_SKIP / PM_CANCEL.
+static PmAnswer _pmAskOutput(uint8_t pin, Button* btns, PmDrive drive) {
+    if (drive == PM_DRIVE_TONE) {
+        if (!ledcAttach(pin, BUZZER_TONE_HZ, BUZZER_TONE_RES)) return PM_NO;
+    }
+    else {
+        pinMode(pin, OUTPUT);
+    }
     // The candidate may really be a button to GND; weakest drive keeps that
-    // short harmless while an LED is still visible.
+    // short harmless while an LED or piezo is still noticeable.
     gpio_set_drive_capability((gpio_num_t)pin, GPIO_DRIVE_CAP_0);
     for (uint8_t i = 0; i < PF_BTN_COUNT; i++) {
         (void)btns[i].wasPressed();
         (void)btns[i].wasShortReleased();
         if (btns[i].isHeld()) btns[i].cancelPress();
     }
+    // Blink is a steady 250/250; buzzer modes beep 150 on / 350 off.
+    const uint32_t onMs  = (drive == PM_DRIVE_BLINK) ? 250 : 150;
+    const uint32_t offMs = (drive == PM_DRIVE_BLINK) ? 250 : 350;
     uint32_t lastToggle = millis();
     bool on = true;
-    digitalWrite(pin, on ? HIGH : LOW);
+    _pmDriveOut(pin, drive, on);
     PmAnswer result = PM_NONE;
     while (result == PM_NONE) {
         uint32_t now = millis();
-        if (now - lastToggle >= 250) {
+        if (now - lastToggle >= (on ? onMs : offMs)) {
             lastToggle = now;
             on = !on;
-            digitalWrite(pin, on ? HIGH : LOW);
+            _pmDriveOut(pin, drive, on);
         }
         for (uint8_t i = 0; i < PF_BTN_COUNT; i++) btns[i].tick();
         buzzerTick();
@@ -434,20 +469,41 @@ static PmAnswer _pmAskLed(uint8_t pin, Button* btns) {
         if (result == PM_NONE) result = _pmPollAnswer();
         delay(5);
     }
+    _pmDriveOut(pin, drive, false);
+    if (drive == PM_DRIVE_TONE) ledcDetach(pin);
     digitalWrite(pin, LOW);
     pinMode(pin, INPUT);
     gpio_set_drive_capability((gpio_num_t)pin, GPIO_DRIVE_CAP_2);
     return result;
 }
 
-static bool _pmLearnLeds(PinMap& m) {
-    // Confirm with the buttons as they are about to be saved, not as booted.
-    Button btns[PF_BTN_COUNT] = {};
+// Confirm with the buttons as they are about to be saved, not as booted.
+static void _pmTempButtons(const PinMap& m, Button* btns) {
     for (uint8_t i = 0; i < PF_BTN_COUNT; i++) {
+        btns[i] = Button{};
         btns[i].pin = _pmPin(m.v[i]);
         btns[i].activeHigh = _pmNc(m.v[i]);
         btns[i].init();
     }
+}
+
+// Saved pin first, then the build default, then every other allowed pin.
+static uint8_t _pmCandidates(uint8_t fn, const PinMap& m, const bool* taken, uint8_t* order) {
+    uint8_t n = 0;
+    auto push = [&](uint8_t pin) {
+        if (taken[pin] || _pmPinRejectReason(fn, pin)) return;
+        for (uint8_t k = 0; k < n; k++) if (order[k] == pin) return;
+        order[n++] = pin;
+    };
+    push(_pmPin(m.v[fn]));
+    push(_pmPin(_pmFns[fn].dflt));
+    for (uint8_t pin : _pmUsablePins) push(pin);
+    return n;
+}
+
+static bool _pmLearnLeds(PinMap& m) {
+    Button btns[PF_BTN_COUNT];
+    _pmTempButtons(m, btns);
     _pmOut("LEDs: each candidate pin blinks. E-stop or y = this one, other button or n = next pin,");
     _pmOut("  s = skip (keep saved), c or hold E-stop 2s = cancel");
 
@@ -456,19 +512,12 @@ static bool _pmLearnLeds(PinMap& m) {
         taken[_pmPin(m.v[i])] = true;
         taken[_pmPin(_pmActive.v[i])] = true;   // may still be wired as a button
     }
+    taken[_pmPin(m.v[PF_BUZZER])] = true;
+    taken[_pmPin(_pmActive.v[PF_BUZZER])] = true;
 
-    for (uint8_t fn = PF_BTN_COUNT; fn < PF_COUNT; fn++) {
-        // Saved pin first, then the build default, then everything else.
+    for (uint8_t fn = PF_BTN_COUNT; fn < PF_BUZZER; fn++) {
         uint8_t order[sizeof(_pmUsablePins) + 2];
-        uint8_t n = 0;
-        auto push = [&](uint8_t pin) {
-            if (taken[pin] || _pmPinRejectReason(fn, pin)) return;
-            for (uint8_t k = 0; k < n; k++) if (order[k] == pin) return;
-            order[n++] = pin;
-        };
-        push(_pmPin(m.v[fn]));
-        push(_pmFns[fn].dflt);
-        for (uint8_t pin : _pmUsablePins) push(pin);
+        uint8_t n = _pmCandidates(fn, m, taken, order);
         if (n == 0) {
             _pmOut("%s: no free output pin left - kept GPIO %u", _pmFns[fn].label, _pmPin(m.v[fn]));
             continue;
@@ -478,7 +527,7 @@ static bool _pmLearnLeds(PinMap& m) {
         for (uint8_t k = 0; !done; k = (uint8_t)((k + 1) % n)) {
             if (k == 0) _pmOut("Which pin lights the %s?", _pmFns[fn].label);
             _pmOut("  blinking GPIO %u (%u/%u)", order[k], k + 1, n);
-            PmAnswer a = _pmAskLed(order[k], btns);
+            PmAnswer a = _pmAskOutput(order[k], btns, PM_DRIVE_BLINK);
             if (a == PM_CANCEL) return false;
             if (a == PM_SKIP) {
                 taken[_pmPin(m.v[fn])] = true;
@@ -497,18 +546,62 @@ static bool _pmLearnLeds(PinMap& m) {
     return true;
 }
 
+// The real buzzer is released for the duration, so no confirm beeps here.
+static bool _pmLearnBuzzer(PinMap& m) {
+    Button btns[PF_BTN_COUNT];
+    _pmTempButtons(m, btns);
+    buzzerDeinit();
+    _pmOut("Buzzer: each candidate pin beeps. E-stop or y = this one, other button or n = next pin,");
+    _pmOut("  s = skip (keep saved), c or hold E-stop 2s = cancel");
+
+    bool taken[64] = {false};
+    for (uint8_t i = 0; i < PF_BUZZER; i++) taken[_pmPin(m.v[i])] = true;
+    for (uint8_t i = 0; i < PF_BTN_COUNT; i++) taken[_pmPin(_pmActive.v[i])] = true;
+
+    uint8_t order[sizeof(_pmUsablePins) + 2];
+    uint8_t n = _pmCandidates(PF_BUZZER, m, taken, order);
+    if (n == 0) {
+        _pmOut("buzzer: no free output pin left - kept GPIO %u", _pmPin(m.v[PF_BUZZER]));
+        return true;
+    }
+
+    uint8_t pin = 0xFF;
+    for (uint8_t k = 0; pin == 0xFF; k = (uint8_t)((k + 1) % n)) {
+        // A tone sounds on passive and active buzzers alike.
+        _pmOut("  beeping GPIO %u (%u/%u) - hear it?", order[k], k + 1, n);
+        PmAnswer a = _pmAskOutput(order[k], btns, PM_DRIVE_TONE);
+        if (a == PM_CANCEL) return false;
+        if (a == PM_SKIP) {
+            _pmOut("buzzer: kept GPIO %u%s", _pmPin(m.v[PF_BUZZER]), _pmFlagText(PF_BUZZER, m.v[PF_BUZZER]));
+            return true;
+        }
+        if (a == PM_YES) pin = order[k];
+    }
+
+    // Plain on/off only beeps on an active buzzer; a passive one just clicks.
+    _pmOut("Type check on GPIO %u: does it BEEP now (not just click)? y = active, n = passive", pin);
+    PmAnswer t = _pmAskOutput(pin, btns, PM_DRIVE_DC);
+    if (t == PM_CANCEL) return false;
+    bool active = (t == PM_YES);
+    if (t == PM_SKIP) active = _pmNc(m.v[PF_BUZZER]);
+    m.v[PF_BUZZER] = pin | (active ? PM_NC_BIT : 0);
+    _pmOut("buzzer -> GPIO %u (%s)", pin, active ? "active" : "passive");
+    if (active) _pmOut("  warning: an active buzzer needs a transistor, the GPIO alone gets overloaded");
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 inline void pinmapPrint() {
     PinMap saved;
     uint16_t fromNvs = pinmapLoad(saved);
-    _pmOut("%-24s active  saved", "function");
+    _pmOut("%-24s active       saved", "function");
     for (uint8_t i = 0; i < PF_COUNT; i++) {
         bool pending = saved.v[i] != _pmActive.v[i];
-        _pmOut("%-24s %3u%-3s  %3u%-3s %s%s", _pmFns[i].label,
-            _pmPin(_pmActive.v[i]), _pmNc(_pmActive.v[i]) ? " nc" : "",
-            _pmPin(saved.v[i]), _pmNc(saved.v[i]) ? " nc" : "",
+        _pmOut("%-24s %3u%-8s  %3u%-8s %s%s", _pmFns[i].label,
+            _pmPin(_pmActive.v[i]), _pmFlagText(i, _pmActive.v[i]),
+            _pmPin(saved.v[i]), _pmFlagText(i, saved.v[i]),
             (fromNvs & (1u << i)) ? "[NVS]" : "[default]",
             pending ? "  restart pending" : "");
     }
@@ -521,6 +614,8 @@ static void _pmRestoreHardware() {
         _ledSetDuty(l->pin, LED_DUTY_OFF);
     }
     buttonsInit();
+    buzzerDeinit();
+    buzzerInit();
 }
 
 static bool _pmCommit(const PinMap& m) {
@@ -538,7 +633,7 @@ static bool _pmCommit(const PinMap& m) {
 }
 
 // Blocking. Caller guarantees no wheel link (supervisor held in DISCONNECTED).
-inline void pinmapLearn(bool doButtons, bool doLeds) {
+inline void pinmapLearn(bool doButtons, bool doLeds, bool doBuzzer) {
     PinMap m;
     pinmapLoad(m);
     while (Serial.available() > 0) (void)Serial.read();
@@ -547,6 +642,7 @@ inline void pinmapLearn(bool doButtons, bool doLeds) {
     bool ok = true;
     if (doButtons) ok = _pmLearnButtons(m);
     if (ok && doLeds) ok = _pmLearnLeds(m);
+    if (ok && doBuzzer) ok = _pmLearnBuzzer(m);
 
     if (!ok) {
         _pmOut("Cancelled - nothing saved");
@@ -556,7 +652,7 @@ inline void pinmapLearn(bool doButtons, bool doLeds) {
 
     _pmOut("Result:");
     for (uint8_t i = 0; i < PF_COUNT; i++) {
-        _pmOut("  %-24s GPIO %u%s", _pmFns[i].label, _pmPin(m.v[i]), _pmNc(m.v[i]) ? " (nc)" : "");
+        _pmOut("  %-24s GPIO %u%s", _pmFns[i].label, _pmPin(m.v[i]), _pmFlagText(i, m.v[i]));
     }
     _pmOut("Save? y/n");
     if (_pmAsk(false) != PM_YES || !_pmCommit(m)) {
@@ -577,7 +673,7 @@ inline void pinmapLearn(bool doButtons, bool doLeds) {
 
 static int _pmFindFn(const char* name, bool button) {
     uint8_t from = button ? 0 : PF_BTN_COUNT;
-    uint8_t to   = button ? PF_BTN_COUNT : PF_COUNT;
+    uint8_t to   = button ? PF_BTN_COUNT : PF_BUZZER;
     for (uint8_t i = from; i < to; i++) {
         if (strcmp(name, _pmFns[i].key) == 0) return i;
     }
@@ -610,6 +706,27 @@ inline void pinmapSet(const char* args, bool button) {
     if (!_pmCommit(m)) return;
     _pmOut("%s -> GPIO %d%s saved, 'restart' to apply", _pmFns[fn].label, pin, nc ? " (nc)" : "");
     if (button && pin >= 34) _pmOut("note: GPIO %d has no internal pull-up, add an external resistor", pin);
+}
+
+// "<gpio> [passive|active]"
+inline void pinmapSetBuzzer(const char* args) {
+    char mode[9] = {0};
+    int pin = -1;
+    int n = sscanf(args, "%d %8s", &pin, mode);
+    bool active = false;
+    if (n == 2 && strcmp(mode, "active") == 0) active = true;
+    else if (n == 2 && strcmp(mode, "passive") != 0) n = 0;
+    if (n < 1 || pin < 0 || pin > 39) {
+        _pmOut("use: pinmap buzzer <gpio> [passive|active]");
+        return;
+    }
+    PinMap m;
+    pinmapLoad(m);
+    if (n == 1) active = _pmNc(m.v[PF_BUZZER]);
+    m.v[PF_BUZZER] = (uint8_t)pin | (active ? PM_NC_BIT : 0);
+    if (!_pmCommit(m)) return;
+    _pmOut("buzzer -> GPIO %d (%s) saved, 'restart' to apply", pin, active ? "active" : "passive");
+    if (active) _pmOut("warning: an active buzzer needs a transistor, the GPIO alone gets overloaded");
 }
 
 #endif // PINMAP_H

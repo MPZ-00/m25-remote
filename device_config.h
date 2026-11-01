@@ -131,11 +131,16 @@
 #define LED_BATTERY_PIN    27   // Red    - battery charge level indicator
 
 // ---------------------------------------------------------------------------
-// Active Buzzer Output (optional audio feedback)
+// Buzzer (audio feedback)
 // ---------------------------------------------------------------------------
-// Recommended pins: 23, 22, 21, 5
-// Comment out to disable buzzer support
-#define BUZZER_PIN         23   // Active buzzer for audio feedback
+// Default: passive piezo, driven with a tone straight from the GPIO.
+// Define BUZZER_ACTIVE for a buzzer with built-in oscillator (on/off drive).
+// Active buzzers and magnetic (coil) passive buzzers need a transistor:
+// they draw more current than a GPIO should source.
+// Recommended pins: 23, 22, 21, 5. Runtime override: 'pinmap buzzer'.
+#define BUZZER_PIN         23
+#define BUZZER_TONE_HZ     2700  // near the resonance of common piezo discs
+// #define BUZZER_ACTIVE
 
 // LEDC channel assignments (0-7 are available in single-core mode)
 #define LEDC_CH_STATUS     0

@@ -224,7 +224,8 @@ static void _scPrintHelp() {
     _scCmdOut("  pinmap [show]             Button/LED GPIOs: active vs saved");
     _scCmdOut("  pinmap btn <estop|hill|assist|power> <gpio> [nc|no]   Assign a button (applies after restart)");
     _scCmdOut("  pinmap led <status|battery|hill|assist|ble> <gpio>    Assign an LED (applies after restart)");
-    _scCmdOut("  pinmap learn [btn|led]    Guided assignment, answer y/n/s/c (needs 'scan off')");
+    _scCmdOut("  pinmap buzzer <gpio> [passive|active]                 Assign the buzzer (applies after restart)");
+    _scCmdOut("  pinmap learn [btn|led|buzzer]  Guided assignment, answer y/n/s/c (needs 'scan off')");
     _scCmdOut("  pinmap reset              Back to build-default pins (applies after restart)");
     _scCmdOut("  ble                       Quick BLE connection status");
     _scCmdOut("  wheels                    Verbose per-wheel status + masked key");
@@ -972,6 +973,9 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         else if (strncmp(arg, "led ", 4) == 0) {
             pinmapSet(arg + 4, false);
         }
+        else if (strncmp(arg, "buzzer ", 7) == 0) {
+            pinmapSetBuzzer(arg + 7);
+        }
         else if (strcmp(arg, "reset") == 0) {
             pinmapClear();
             _scCmdOut("[Pinmap] cleared - build defaults after 'restart'");
@@ -979,10 +983,11 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         else if (strcmp(arg, "learn") == 0 || strncmp(arg, "learn ", 6) == 0) {
             const char* what = arg + 5;
             while (*what == ' ') what++;
-            bool doBtn = (*what == '\0' || strcmp(what, "btn") == 0);
-            bool doLed = (*what == '\0' || strcmp(what, "led") == 0);
-            if (!doBtn && !doLed) {
-                _scCmdOut("[Pinmap] use: pinmap learn [btn|led]");
+            bool doBtn  = (*what == '\0' || strcmp(what, "btn") == 0);
+            bool doLed  = (*what == '\0' || strcmp(what, "led") == 0);
+            bool doBuzz = (*what == '\0' || strcmp(what, "buzzer") == 0);
+            if (!doBtn && !doLed && !doBuzz) {
+                _scCmdOut("[Pinmap] use: pinmap learn [btn|led|buzzer]");
                 return;
             }
             // The wizard blocks loop(); no wheel link may exist while it runs.
@@ -991,10 +996,10 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 _scCmdOut("[Pinmap] run 'scan off' first and wait for DISCONNECTED");
                 return;
             }
-            pinmapLearn(doBtn, doLed);
+            pinmapLearn(doBtn, doLed, doBuzz);
         }
         else {
-            _scCmdOut("[Pinmap] use: pinmap [show|btn|led|learn|reset]");
+            _scCmdOut("[Pinmap] use: pinmap [show|btn|led|buzzer|learn|reset]");
         }
         return;
     }

@@ -1,9 +1,11 @@
 /*
- * buzzer.h - Active Buzzer Control
+ * buzzer.h - Buzzer control (passive or active)
  *
- * Provides audio feedback for user interactions and system events.
- * Uses a single GPIO pin to drive an active buzzer (no PWM frequency needed).
- * Pin definition: device_config.h (BUZZER_PIN)
+ * Passive (default): a piezo driven with a BUZZER_TONE_HZ square wave via LEDC.
+ *   Its own frequency/resolution gives it a separate LEDC timer from the LEDs.
+ * Active (BUZZER_ACTIVE or pinmap): a buzzer with built-in oscillator, driven
+ *   HIGH/LOW. Needs a transistor; it draws more than a GPIO should source.
+ * Pin and type come from device_config.h, overridden by pinmap.h at boot.
  */
 
 #ifndef BUZZER_H
@@ -86,22 +88,62 @@ static uint8_t  _currentPattern = BUZZ_SILENT;
 static uint8_t  _currentStep = 0;
 static uint32_t _stepStartMs = 0;
 static bool     _buzzerOn = false;  // Current output state
+static uint8_t  _buzzerPin = BUZZER_PIN;
+#ifdef BUZZER_ACTIVE
+static bool     _buzzerPassive = false;
+#else
+static bool     _buzzerPassive = true;
+#endif
+static bool     _buzzerReady = false;  // pin attached; writes are skipped otherwise
+
+#define BUZZER_TONE_RES  10
+#define BUZZER_TONE_DUTY 512   // 50 % at 10 bit
+
+// Only before buzzerInit(); pinmap.h applies NVS overrides here.
+inline void buzzerConfigure(uint8_t pin, bool passive) {
+    _buzzerPin = pin;
+    _buzzerPassive = passive;
+}
+inline uint8_t buzzerPin()       { return _buzzerPin; }
+inline bool    buzzerIsPassive() { return _buzzerPassive; }
+
+static void _buzzerOutput(bool on) {
+    if (!_buzzerReady) return;
+    if (_buzzerPassive) ledcWrite(_buzzerPin, on ? BUZZER_TONE_DUTY : 0);
+    else                digitalWrite(_buzzerPin, on ? HIGH : LOW);
+}
 
 // ---------------------------------------------------------------------------
 // buzzerInit() - Initialize buzzer GPIO
 // ---------------------------------------------------------------------------
 void buzzerInit() {
-#ifdef BUZZER_PIN
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, LOW);
+    if (_buzzerPassive) {
+        _buzzerReady = ledcAttach(_buzzerPin, BUZZER_TONE_HZ, BUZZER_TONE_RES);
+        if (!_buzzerReady) LOG_ERROR(TAG_BUZZER, "LEDC attach failed on GPIO %d", _buzzerPin);
+    }
+    else {
+        pinMode(_buzzerPin, OUTPUT);
+        _buzzerReady = true;
+    }
     _buzzerActive = false;
     _currentPattern = BUZZ_SILENT;
     _currentStep = 0;
     _buzzerOn = false;
-    LOG_INFO(TAG_BUZZER, "Initialized on GPIO %d", BUZZER_PIN);
-#else
-    LOG_WARN(TAG_BUZZER, "Not configured (BUZZER_PIN not defined)");
-#endif
+    _buzzerOutput(false);
+    LOG_INFO(TAG_BUZZER, "Initialized on GPIO %d (%s)", _buzzerPin,
+        _buzzerPassive ? "passive, tone" : "active, on/off");
+}
+
+// Releases the pin (pinmap wizard tests other pins meanwhile); buzzerInit() restores.
+void buzzerDeinit() {
+    _buzzerOutput(false);
+    _buzzerActive = false;
+    _buzzerOn = false;
+    if (_buzzerReady) {
+        if (_buzzerPassive) ledcDetach(_buzzerPin);
+        pinMode(_buzzerPin, INPUT);
+    }
+    _buzzerReady = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +151,6 @@ void buzzerInit() {
 // Call this to trigger a sound. Play is non-blocking; buzzerTick() advances.
 // ---------------------------------------------------------------------------
 void buzzerPlay(BuzzerPattern pattern) {
-#ifdef BUZZER_PIN
     if (pattern >= sizeof(PATTERNS) / sizeof(PATTERNS[0])) {
         LOG_WARN(TAG_BUZZER, "Invalid pattern %d", pattern);
         return;
@@ -122,28 +163,24 @@ void buzzerPlay(BuzzerPattern pattern) {
 
     if (_buzzerActive) {
         // Start first step immediately
-        digitalWrite(BUZZER_PIN, HIGH);
+        _buzzerOutput(true);
         _buzzerOn = true;
     }
-#endif
 }
 
 // ---------------------------------------------------------------------------
 // buzzerStop() - Immediately stop current pattern
 // ---------------------------------------------------------------------------
 void buzzerStop() {
-#ifdef BUZZER_PIN
-    digitalWrite(BUZZER_PIN, LOW);
+    _buzzerOutput(false);
     _buzzerActive = false;
     _buzzerOn = false;
-#endif
 }
 
 // ---------------------------------------------------------------------------
 // buzzerTick() - Advance pattern playback (call from main loop)
 // ---------------------------------------------------------------------------
 void buzzerTick() {
-#ifdef BUZZER_PIN
     if (!_buzzerActive) return;
 
     uint32_t now = millis();
@@ -151,7 +188,7 @@ void buzzerTick() {
 
     if (_currentStep >= pattern.stepCount) {
         // Pattern complete
-        digitalWrite(BUZZER_PIN, LOW);
+        _buzzerOutput(false);
         _buzzerActive = false;
         _buzzerOn = false;
         return;
@@ -163,7 +200,7 @@ void buzzerTick() {
     if (_buzzerOn) {
         // Currently in ON phase
         if (elapsed >= step.onDuration) {
-            digitalWrite(BUZZER_PIN, LOW);
+            _buzzerOutput(false);
             _buzzerOn = false;
             _stepStartMs = now;
 
@@ -171,7 +208,7 @@ void buzzerTick() {
             if (step.offDuration == 0) {
                 _currentStep++;
                 if (_currentStep < pattern.stepCount) {
-                    digitalWrite(BUZZER_PIN, HIGH);
+                    _buzzerOutput(true);
                     _buzzerOn = true;
                     _stepStartMs = now;
                 }
@@ -183,24 +220,19 @@ void buzzerTick() {
         if (elapsed >= step.offDuration) {
             _currentStep++;
             if (_currentStep < pattern.stepCount) {
-                digitalWrite(BUZZER_PIN, HIGH);
+                _buzzerOutput(true);
                 _buzzerOn = true;
                 _stepStartMs = now;
             }
         }
     }
-#endif
 }
 
 // ---------------------------------------------------------------------------
 // buzzerIsActive() - Check if a pattern is currently playing
 // ---------------------------------------------------------------------------
 bool buzzerIsActive() {
-#ifdef BUZZER_PIN
     return _buzzerActive;
-#else
-    return false;
-#endif
 }
 
 #endif // BUZZER_H

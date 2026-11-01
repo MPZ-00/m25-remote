@@ -82,7 +82,7 @@ Joystick (ADC) → ControlState → Mapper → CommandFrame → Supervisor → B
 | `Logger.h/.cpp` | Singleton tag-based logger; `logForced()` bypasses runtime filtering for safety events |
 | `joystick.h` | ADC1 oversampling, deadzone, `joystickRecalibrate()` |
 | `eventlog.h` | LittleFS event log (state changes, button edges, all WARN/ERROR) for serial-less field tests; `logfile dump` |
-| `pinmap.h` | Runtime button/LED GPIO map (own NVS namespace `m25pins`, applied at boot before `ledInit()`); `pinmap` serial commands + `pinmap learn` wizard (needs `scan off`) |
+| `pinmap.h` | Runtime button/LED/buzzer GPIO map (buzzer: passive tone or active on/off) (own NVS namespace `m25pins`, applied at boot before `ledInit()`); `pinmap` serial commands + `pinmap learn` wizard (needs `scan off`) |
 | `selftest.h` | Boot-time LED/button/joystick self-test; runs until passed on a fresh board or after serial `selftest` |
 
 ### Supervisor states
