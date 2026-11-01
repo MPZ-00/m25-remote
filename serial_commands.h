@@ -718,14 +718,17 @@ static void _scCmdDecorateMsg(const char* msg, char* out, size_t outSize) {
         return;
     }
 
-    if (strncmp(msg, "[CMD]", 5) == 0) {
-        snprintf(out, outSize, "%s", msg);
-        return;
-    }
-
+    // Logger already prints the tag; drop a "[Config]" prefix that would repeat it.
     if (msg[0] == '[') {
-        snprintf(out, outSize, "\b%s", msg);
-        return;
+        const char* close = strchr(msg, ']');
+        const char* tagName = Logger::tagString(_scCmdTagFromMsg(msg));
+        size_t nameLen = close ? (size_t)(close - msg - 1) : 0;
+        if (close && nameLen == strlen(tagName) && strncasecmp(msg + 1, tagName, nameLen) == 0) {
+            const char* rest = close + 1;
+            while (*rest == ' ') rest++;
+            snprintf(out, outSize, "%s", rest);
+            return;
+        }
     }
 
     snprintf(out, outSize, "%s", msg);
