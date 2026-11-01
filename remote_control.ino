@@ -356,9 +356,14 @@ void setup() {
             LOG_INFO(TAG_BOOT, "Joystick deadzone loaded from NVS: %u%%", dz);
         }
     }
+    bool stickVerifiedAtRest = false;
     if (nvsSelfTestPending()) {
         SelfTestResult r = selfTestRun();
         if (r != SELFTEST_FAIL && r != SELFTEST_POSTPONED) nvsSaveSelfTestDone(true);
+#ifndef NO_JOYSTICK
+        // PASS/PARTIAL imply the full-cal step ended with a validated at-rest center.
+        stickVerifiedAtRest = (r == SELFTEST_PASS || r == SELFTEST_PARTIAL);
+#endif
     }
     supervisor.setArmInhibit(!joystickHasRangeCalibration());
     {
@@ -373,7 +378,13 @@ void setup() {
     }
 
     sysState = STATE_BOOT;
-    powerOnSafetyCheck();
+    if (stickVerifiedAtRest) {
+        Logger::instance().logForced(LogLevel::INFO, TAG_SAFETY, __FILE__, __LINE__,
+            "Power-on center hold skipped: self-test just verified the stick at rest");
+    }
+    else {
+        powerOnSafetyCheck();
+    }
     Logger::instance().logForced(LogLevel::INFO, TAG_JOYSTICK, __FILE__, __LINE__,
         "Recalibrating joystick after safety check");
     if (!joystickRecalibrate()) {
