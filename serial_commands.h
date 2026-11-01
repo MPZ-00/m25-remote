@@ -79,26 +79,6 @@
  // Define ENABLE_WIFI in device_config.h and add #include <WiFi.h> in sketch
  // if WiFi status is needed in sysinfo.
 
-#ifndef ENV_PROFILE_AVAILABLE
-#define ENV_PROFILE_AVAILABLE 0
-#endif
-
-#ifndef ENV_LEFT_WHEEL_MAC
-#define ENV_LEFT_WHEEL_MAC LEFT_WHEEL_MAC
-#endif
-
-#ifndef ENV_RIGHT_WHEEL_MAC
-#define ENV_RIGHT_WHEEL_MAC RIGHT_WHEEL_MAC
-#endif
-
-#ifndef ENV_ENCRYPTION_KEY_LEFT
-#define ENV_ENCRYPTION_KEY_LEFT ENCRYPTION_KEY_LEFT
-#endif
-
-#ifndef ENV_ENCRYPTION_KEY_RIGHT
-#define ENV_ENCRYPTION_KEY_RIGHT ENCRYPTION_KEY_RIGHT
-#endif
-
 struct LogTagInfo {
     uint32_t    tag;
     const char* name;
@@ -1730,31 +1710,24 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
         const char* arg = cmd + 6;
         while (*arg == ' ') arg++;
         if (strcmp(arg, "show") == 0 || *arg == '\0') {
-            // Read NVS values (returns false + zeros if not set)
-            char    nvsLmac[18] = {0}, nvsRmac[18] = {0};
-            uint8_t nvsLkey[16] = {0}, nvsRkey[16] = {0};
+            // nvsLoad* fills the effective value (NVS or fallback profile), same path as boot.
+            char    activeLmac[18] = {0}, activeRmac[18] = {0};
+            uint8_t activeLkey[16] = {0}, activeRkey[16] = {0};
             uint8_t nvsAssist = 0;
-            bool lmacNvs   = nvsLoadMac(WHEEL_LEFT,  nvsLmac, sizeof(nvsLmac));
-            bool rmacNvs   = nvsLoadMac(WHEEL_RIGHT, nvsRmac, sizeof(nvsRmac));
-            bool lkeyNvs   = nvsLoadKey(WHEEL_LEFT,  nvsLkey);
-            bool rkeyNvs   = nvsLoadKey(WHEEL_RIGHT, nvsRkey);
+            bool lmacNvs   = nvsLoadMac(WHEEL_LEFT,  activeLmac, sizeof(activeLmac));
+            bool rmacNvs   = nvsLoadMac(WHEEL_RIGHT, activeRmac, sizeof(activeRmac));
+            bool lkeyNvs   = nvsLoadKey(WHEEL_LEFT,  activeLkey);
+            bool rkeyNvs   = nvsLoadKey(WHEEL_RIGHT, activeRkey);
             bool assistNvs = nvsLoadAssistLevel(&nvsAssist);
+            uint8_t activeAssist = assistNvs ? nvsAssist : (ctx.assistLevel ? *ctx.assistLevel : 0);
+            const char* fb = nvsCredFallbackName();
 
-            // Resolve active value per setting: NVS > env > default
-            const char*    activeLmac  = lmacNvs  ? nvsLmac  : (_scSourceEnvAvailable ? _scSourceEnvLeftMac   : _scSourceDefaultLeftMac);
-            const char*    activeRmac  = rmacNvs  ? nvsRmac  : (_scSourceEnvAvailable ? _scSourceEnvRightMac  : _scSourceDefaultRightMac);
-            const uint8_t* activeLkey  = lkeyNvs  ? nvsLkey  : (_scSourceEnvAvailable ? _scSourceEnvLeftKey   : _scSourceDefaultLeftKey);
-            const uint8_t* activeRkey  = rkeyNvs  ? nvsRkey  : (_scSourceEnvAvailable ? _scSourceEnvRightKey  : _scSourceDefaultRightKey);
-            uint8_t        activeAssist = assistNvs ? nvsAssist : (ctx.assistLevel ? *ctx.assistLevel : 0);
-
-            const char* lmacSrc   = lmacNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
-            const char* rmacSrc   = rmacNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
-            const char* lkeySrc   = lkeyNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
-            const char* rkeySrc   = rkeyNvs   ? "NVS" : (_scSourceEnvAvailable ? "env" : "default");
+            const char* lmacSrc   = lmacNvs   ? "NVS" : fb;
+            const char* rmacSrc   = rmacNvs   ? "NVS" : fb;
+            const char* lkeySrc   = lkeyNvs   ? "NVS" : fb;
+            const char* rkeySrc   = rkeyNvs   ? "NVS" : fb;
             const char* assistSrc = assistNvs ? "NVS" : "default";
 
-            // Masked keys: reveal only first/last 2 bytes so serial logs can't
-            // leak the full AES key (still enough to verify the right key loaded).
             char lkeyHex[16] = {0}, rkeyHex[16] = {0};
             snprintf(lkeyHex, sizeof(lkeyHex), "%02x%02x..%02x%02x",
                 activeLkey[0], activeLkey[1], activeLkey[14], activeLkey[15]);
@@ -1762,19 +1735,23 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
                 activeRkey[0], activeRkey[1], activeRkey[14], activeRkey[15]);
             const char* assistName = (activeAssist < ASSIST_COUNT) ? assistConfigs[activeAssist].name : "?";
 
-            // Determine active source: explicitly saved name, or derived from sources
             char activeSourceName[16] = {0};
             bool srcSaved = nvsLoadActiveSource(activeSourceName, sizeof(activeSourceName));
             const char* activeSource;
-            if (srcSaved && activeSourceName[0] != '\0') {
-                activeSource = activeSourceName;
-            }
-            else if (!lmacNvs && !rmacNvs && !lkeyNvs && !rkeyNvs) {
-                activeSource = _scSourceEnvAvailable ? "env (fallback)" : "default";
+            if (lmacNvs || rmacNvs || lkeyNvs || rkeyNvs) {
+                activeSource = (srcSaved && strcmp(activeSourceName, "env") == 0)
+                    ? "env (copied to NVS)" : "custom (NVS override)";
             }
             else {
-                activeSource = "custom (NVS override)";
+                activeSource = fb;
             }
+
+            // What BLE actually dials can lag behind NVS until the next reconnect.
+            char liveL[18] = {0}, liveR[18] = {0};
+            bool haveL = bleGetMac(WHEEL_LEFT,  liveL, sizeof(liveL));
+            bool haveR = bleGetMac(WHEEL_RIGHT, liveR, sizeof(liveR));
+            bool liveMismatch = (haveL && strcasecmp(liveL, activeLmac) != 0) ||
+                                (haveR && strcasecmp(liveR, activeRmac) != 0);
 
             _scCmdOut("[Config] --- Active Credential Source ---");
             _scCmdOutf("[Config] Selected   : %s", activeSource);
@@ -1785,6 +1762,9 @@ static void _scDispatch(const char* cmd, const SerialContext& ctx) {
             _scCmdOutf("[Config] Assist     : %s (%u)  [%s]", assistName, activeAssist, assistSrc);
             _scCmdOutf("[Config] Available  : env=%s  default=YES",
                 _scSourceEnvAvailable ? "YES" : "no");
+            if (liveMismatch) {
+                _scCmdOutf("[Config] BLE in use : L=%s R=%s  (differs, run 'reconnect')", liveL, liveR);
+            }
             _scCmdOut("[Config] Switch     : 'config source <env|default>'");
         }
         else if (strncmp(arg, "source ", 7) == 0) {

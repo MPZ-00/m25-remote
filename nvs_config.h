@@ -4,8 +4,9 @@
  * Wheel MACs and AES keys are stored in the ESP32 NVS (flash) under the
  * "m25cfg" namespace using the Arduino Preferences library.
  *
- * On first boot (NVS empty) the compiled-in defaults from device_config.h
- * (or injected by load_env.py / build flags) are used automatically.
+ * Without an NVS value the .env profile (ENV_*, injected by load_env.py) is
+ * used, or device_config.h defaults if .env is absent or 'config source
+ * default' was selected.
  *
  * Usage in setup():
  *   char lmac[18], rmac[18];
@@ -38,15 +39,60 @@
 
 #define NVS_NAMESPACE "m25cfg"
 
- // ---------------------------------------------------------------------------
- // Compiled-in fallbacks (from device_config.h, possibly overridden by build
- // flags injected by load_env.py)
- // ---------------------------------------------------------------------------
+// load_env.py injects ENV_* only when all four .env values are valid.
+#ifndef ENV_PROFILE_AVAILABLE
+#define ENV_PROFILE_AVAILABLE 0
+#endif
+#ifndef ENV_LEFT_WHEEL_MAC
+#define ENV_LEFT_WHEEL_MAC LEFT_WHEEL_MAC
+#endif
+#ifndef ENV_RIGHT_WHEEL_MAC
+#define ENV_RIGHT_WHEEL_MAC RIGHT_WHEEL_MAC
+#endif
+#ifndef ENV_ENCRYPTION_KEY_LEFT
+#define ENV_ENCRYPTION_KEY_LEFT ENCRYPTION_KEY_LEFT
+#endif
+#ifndef ENV_ENCRYPTION_KEY_RIGHT
+#define ENV_ENCRYPTION_KEY_RIGHT ENCRYPTION_KEY_RIGHT
+#endif
+
+// ---------------------------------------------------------------------------
+// Compiled-in credential profiles used when NVS holds no per-wheel value.
+// ---------------------------------------------------------------------------
 static const char    _nvsDfltLMac[]  = LEFT_WHEEL_MAC;
 static const char    _nvsDfltRMac[]  = RIGHT_WHEEL_MAC;
 static const uint8_t _nvsDfltLKey[]  = ENCRYPTION_KEY_LEFT;
 static const uint8_t _nvsDfltRKey[]  = ENCRYPTION_KEY_RIGHT;
+static const char    _nvsEnvLMac[]   = ENV_LEFT_WHEEL_MAC;
+static const char    _nvsEnvRMac[]   = ENV_RIGHT_WHEEL_MAC;
+static const uint8_t _nvsEnvLKey[]   = ENV_ENCRYPTION_KEY_LEFT;
+static const uint8_t _nvsEnvRKey[]   = ENV_ENCRYPTION_KEY_RIGHT;
 static const uint8_t _nvsDfltAssist  = ASSIST_INDOOR;
+
+// env wins over device_config.h unless 'config source default' pinned it.
+inline bool _nvsEnvFallbackActive(Preferences& p) {
+    if (!ENV_PROFILE_AVAILABLE) return false;
+    return !p.isKey("active_src") || p.getString("active_src", "") != "default";
+}
+
+inline const char* _nvsFallbackMac(int idx, bool useEnv) {
+    if (useEnv) return (idx == WHEEL_LEFT) ? _nvsEnvLMac : _nvsEnvRMac;
+    return (idx == WHEEL_LEFT) ? _nvsDfltLMac : _nvsDfltRMac;
+}
+
+inline const uint8_t* _nvsFallbackKey(int idx, bool useEnv) {
+    if (useEnv) return (idx == WHEEL_LEFT) ? _nvsEnvLKey : _nvsEnvRKey;
+    return (idx == WHEEL_LEFT) ? _nvsDfltLKey : _nvsDfltRKey;
+}
+
+// Profile nvsLoadMac/nvsLoadKey fall back to: "env" or "default".
+inline const char* nvsCredFallbackName() {
+    Preferences p;
+    if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) return ENV_PROFILE_AVAILABLE ? "env" : "default";
+    bool useEnv = _nvsEnvFallbackActive(p);
+    p.end();
+    return useEnv ? "env" : "default";
+}
 
 // ---------------------------------------------------------------------------
 // Load MAC for wheel idx into buf (must be >= 18 chars).
@@ -57,16 +103,17 @@ inline bool nvsLoadMac(int idx, char* buf, size_t bufLen) {
     // Open RW so missing namespace is created silently on first boot.
     // Opening RO on a missing namespace logs noisy NOT_FOUND errors.
     if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) {
-        strlcpy(buf, (idx == WHEEL_LEFT) ? _nvsDfltLMac : _nvsDfltRMac, bufLen);
+        strlcpy(buf, _nvsFallbackMac(idx, ENV_PROFILE_AVAILABLE), bufLen);
         return false;
     }
     String val = p.getString((idx == WHEEL_LEFT) ? "lmac" : "rmac", "");
+    bool useEnv = _nvsEnvFallbackActive(p);
     p.end();
     if (val.length() == 17) {
         strlcpy(buf, val.c_str(), bufLen);
         return true;
     }
-    strlcpy(buf, (idx == WHEEL_LEFT) ? _nvsDfltLMac : _nvsDfltRMac, bufLen);
+    strlcpy(buf, _nvsFallbackMac(idx, useEnv), bufLen);
     return false;
 }
 
@@ -78,15 +125,16 @@ inline bool nvsLoadKey(int idx, uint8_t* dest) {
     Preferences p;
     // Open RW so missing namespace is created silently on first boot.
     if (!p.begin(NVS_NAMESPACE, /*readOnly=*/false)) {
-        memcpy(dest, (idx == WHEEL_LEFT) ? _nvsDfltLKey : _nvsDfltRKey, 16);
+        memcpy(dest, _nvsFallbackKey(idx, ENV_PROFILE_AVAILABLE), 16);
         return false;
     }
     const char* nvKey = (idx == WHEEL_LEFT) ? "lkey" : "rkey";
     size_t n = p.getBytesLength(nvKey);
     bool found = (n == 16) && (p.getBytes(nvKey, dest, 16) == 16);
+    bool useEnv = _nvsEnvFallbackActive(p);
     p.end();
     if (!found) {
-        memcpy(dest, (idx == WHEEL_LEFT) ? _nvsDfltLKey : _nvsDfltRKey, 16);
+        memcpy(dest, _nvsFallbackKey(idx, useEnv), 16);
     }
     return found;
 }
@@ -440,11 +488,12 @@ inline void nvsPrintAll() {
     const char* assistName = (assist == 0) ? "Indoor" :
                              (assist == 1) ? "Outdoor" : "Learning";
 
+    const char* fb = nvsCredFallbackName();
     LOG_INFO(TAG_CONFIG, "--- Wheel Configuration ---");
-    LOG_INFO(TAG_CONFIG, "Left  MAC    : %s  (%s)", lmac, lmacNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Right MAC    : %s  (%s)", rmac, rmacNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Left  Key    : %s  (%s)", lkeyHex, lkeyNvs ? "NVS" : "build default");
-    LOG_INFO(TAG_CONFIG, "Right Key    : %s  (%s)", rkeyHex, rkeyNvs ? "NVS" : "build default");
+    LOG_INFO(TAG_CONFIG, "Left  MAC    : %s  (%s)", lmac, lmacNvs ? "NVS" : fb);
+    LOG_INFO(TAG_CONFIG, "Right MAC    : %s  (%s)", rmac, rmacNvs ? "NVS" : fb);
+    LOG_INFO(TAG_CONFIG, "Left  Key    : %s  (%s)", lkeyHex, lkeyNvs ? "NVS" : fb);
+    LOG_INFO(TAG_CONFIG, "Right Key    : %s  (%s)", rkeyHex, rkeyNvs ? "NVS" : fb);
     LOG_INFO(TAG_CONFIG, "Assist level : %u (%s)  (%s)", assist, assistName,
              assistNvs ? "NVS" : "build default");
     LOG_INFO(TAG_CONFIG, "Wheel mode   : %s  (%s)", bleWheelModeName(wheelMode),
