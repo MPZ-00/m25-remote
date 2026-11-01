@@ -338,6 +338,7 @@ void setup() {
     // Before the safety check: its midpoint is the rest reference.
     // Without it, theoretical ADC min/max (0/4095) are used and most joysticks
     // will never reach 1.0 normalized, capping effective speed.
+#ifndef NO_JOYSTICK
     {
         uint8_t map = 0;
         if (nvsLoadJsMap(&map)) {
@@ -358,6 +359,7 @@ void setup() {
             LOG_INFO(TAG_BOOT, "Joystick deadzone loaded from NVS: %u%%", dz);
         }
     }
+#endif
     bool stickVerifiedAtRest = false;
     if (nvsSelfTestPending()) {
         SelfTestResult r = selfTestRun();

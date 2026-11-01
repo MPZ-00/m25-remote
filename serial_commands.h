@@ -611,6 +611,10 @@ static bool _scRunFullCal(unsigned long holdMs, Supervisor* sup) {
 #endif
 
 static void _scPrintJs() {
+#ifdef NO_JOYSTICK
+    _scCmdOut("[JS] built with NO_JOYSTICK - always centered");
+    return;
+#else
     // Use a single ADC read so raw and norm values are consistent.
     // Previously two separate reads were made (joystickReadRaw() + joystickRead())
     // which could sample different ADC values and produce misleading log output.
@@ -627,6 +631,7 @@ static void _scPrintJs() {
     _scCmdOutf("[JS] map: fwd/back = GPIO%u%s, left/right = GPIO%u%s",
         joystickMappingSwapped() ? JOYSTICK_X_PIN : JOYSTICK_Y_PIN, joystickMappingInvertY() ? " (inverted)" : "",
         joystickMappingSwapped() ? JOYSTICK_Y_PIN : JOYSTICK_X_PIN, joystickMappingInvertX() ? " (inverted)" : "");
+#endif
 }
 
 static void _scPrintWheels() {
